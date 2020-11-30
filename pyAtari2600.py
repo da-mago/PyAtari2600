@@ -14,7 +14,7 @@ num_cycles = 0    # Atari clock cycles
 page_crossed = 0
 line = 0
 #screen = [[[0,0,0] for i in range(160)] for j in range(192)]
-screen = np.zeros((192, 160, 3), dtype=np.uint8)
+screen = np.zeros((160, 192, 3), dtype=np.uint8)
 colubk = [[0,0]] # List of background colour changes during the line
 # Playfield (40 bits)
 pf0_1 = pf0_2 = pf1_1 = pf1_2 = pf2_1 = pf2_1 = 0
@@ -130,23 +130,31 @@ def TIA_update():
     if addr == WSYNC:
         global num_cycles
         num_cycles = 228 # NTSC
+
     elif addr == VSYNC:
         global  line
         if value == 0:
             line = 3
             print 'VSYNC'
+
     elif addr == RSYNC:
         pass
+
     elif addr == RESP0:
         P0_pos = num_cycles # Assume one change max per line
+
     elif addr == RESP1:
         P1_pos = num_cycles
+
     elif addr == RESM0:
         M0_pos = num_cycles
+
     elif addr == RESM1:
         M1_pos = num_cycles
+
     elif addr == RESBL:
         BL_pos = num_cycles
+
     elif addr == HMOVE:
         tmp = memory[HMP0] >> 4
         if tmp >= 8: tmp = tmp - 16   # -8 ... +7
@@ -163,14 +171,17 @@ def TIA_update():
         tmp = memory[HMBL] >> 4
         if tmp >= 8: tmp = tmp - 16
         BL_pos += tmp
+
     elif addr == HMCLR:
         memory[HMP0] = 0
         memory[HMP1] = 0
         memory[HMM0] = 0
         memory[HMM1] = 0
         memory[HMBL] = 0
+
     elif addr == CXCLR:
         pass
+
     elif addr == PF0:
         global pf0_1, pf0_2
         if num_cycles < 48:
@@ -178,6 +189,7 @@ def TIA_update():
             pf0_2 = value
         elif num_cycles < 148:
             pf0_2 = value
+
     elif addr == PF1:
         global pf1_1, pf1_2
         if num_cycles < 84:
@@ -185,6 +197,7 @@ def TIA_update():
             pf1_2 = value
         elif num_cycles < 164:
             pf1_2 = value
+
     elif addr == PF2:
         global pf2_1, pf2_2
         if num_cycles < 116:
@@ -192,13 +205,20 @@ def TIA_update():
             pf2_2 = value
         elif num_cycles < 196:
             pf2_2 = value
+
     elif addr == CTRLPF:
         if num_cycles < 144: # Before half-line
             pf_mirror = 1 if value & 0x01 else 0
+
     elif addr == COLUBK:
         global colubk
-        cycles = num_cycles - 68 if num_cycles >= 68 else 0
-        colubk.append([cycles, value])
+        #cycles = num_cycles - 68 if num_cycles >= 68 else 0
+        #colubk.append([cycles, value])
+        if num_cycles >= 68:
+            colubk.append([num_cycles - 68, value])
+        else:
+            colubk[0] = [0, value]
+
     elif addr == COLUPF:
         pass
 
@@ -249,6 +269,7 @@ def MEM_READ_ABSOLUTE(addr):
 
     return MEM_READ(addr & MAX_MEM_ADDR)
 
+# Not clear the 'page_crossed' extra cycle: https://wiki.nesdev.com/w/index.php/CPU_addressing_modes
 def MEM_READ_ABSOLUTE_X(addr):
     global page_crossed
 
@@ -272,13 +293,13 @@ def MEM_READ_INDIRECT(addrL):
 
 def MEM_READ_INDIRECT_X(addr):
     addr = (addr + X) & 0xff
-    addr = memory[addr] | (memory[addr + 1] << 8)
+    addr = memory[addr] | (memory[(addr + 1) & 0xff] << 8)
     return MEM_READ(addr & MAX_MEM_ADDR)
 
 def MEM_READ_INDIRECT_Y(val):
     global page_crossed
     
-    addr = memory[addr] | (memory[addr+1]<<8)
+    addr = memory[addr] | (memory[(addr + 1) & 0xff] << 8)
     addr = addr + Y
     if (addr & 0xff) < Y: page_crossed = 1
     return MEM_READ(addr & MAX_MEM_ADDR)
@@ -1494,9 +1515,9 @@ def draw_line():
         s1 = s2
         s2 = colubk[i+1][0]
         color = colorMap[colubk[i][1]>>1]
-        screen[line_visible][s1:s2] = color
+        screen[s1:s2, line_visible] = color
     color = colorMap[(colubk[-1][1]>>1)]
-    screen[line_visible][s2:160] = color
+    screen[s2:160, line_visible] = color
     
     # Priority depends on CTRLPF.D2: assume it is 0 at this moment
     # PF color depends on CTRLPF D1: assume it is 0 at this moment (so use COLUPF)
@@ -1515,158 +1536,158 @@ def draw_line():
 
     # left-side display
     if pf0_1 & 0x10: 
-        screen[line_visible][0:4]   = PF_color1
+        screen[0:4, line_visible]   = PF_color1
     if pf0_1 & 0x20: 
-        screen[line_visible][4:8]   = PF_color1
+        screen[4:8, line_visible]   = PF_color1
     if pf0_1 & 0x40: 
-        screen[line_visible][8:12]  = PF_color1
+        screen[8:12, line_visible]  = PF_color1
     if pf0_1 & 0x80: 
-        screen[line_visible][12:16] = PF_color1
-    if pf1_1 & 0x80: 
-        screen[line_visible][16:20] = PF_color1
-    if pf1_1 & 0x40: 
-        screen[line_visible][20:24] = PF_color1
-    if pf1_1 & 0x20: 
-        screen[line_visible][24:28] = PF_color1
-    if pf1_1 & 0x10: 
-        screen[line_visible][28:32] = PF_color1
-    if pf1_1 & 0x08: 
-        screen[line_visible][32:36] = PF_color1
-    if pf1_1 & 0x04: 
-        screen[line_visible][36:40] = PF_color1
-    if pf1_1 & 0x02: 
-        screen[line_visible][40:44] = PF_color1
-    if pf1_1 & 0x01: 
-        screen[line_visible][44:48] = PF_color1
-    if pf2_1 & 0x01: 
-        screen[line_visible][48:52] = PF_color1
-    if pf2_1 & 0x02: 
-        screen[line_visible][52:56] = PF_color1
-    if pf2_1 & 0x04: 
-        screen[line_visible][56:60] = PF_color1
-    if pf2_1 & 0x08: 
-        screen[line_visible][60:64] = PF_color1
-    if pf2_1 & 0x10: 
-        screen[line_visible][64:68] = PF_color1
-    if pf2_1 & 0x20: 
-        screen[line_visible][68:72] = PF_color1
-    if pf2_1 & 0x40: 
-        screen[line_visible][72:76] = PF_color1
+        screen[12:16, line_visible] = PF_color1
+    if pf1_1 & 0x80:
+        screen[16:20, line_visible] = PF_color1
+    if pf1_1 & 0x40:
+        screen[20:24, line_visible] = PF_color1
+    if pf1_1 & 0x20:
+        screen[24:28, line_visible] = PF_color1
+    if pf1_1 & 0x10:
+        screen[28:32, line_visible] = PF_color1
+    if pf1_1 & 0x08:
+        screen[32:36, line_visible] = PF_color1
+    if pf1_1 & 0x04:
+        screen[36:40, line_visible] = PF_color1
+    if pf1_1 & 0x02:
+        screen[40:44, line_visible] = PF_color1
+    if pf1_1 & 0x01:
+        screen[44:48, line_visible] = PF_color1
+    if pf2_1 & 0x01:
+        screen[48:52, line_visible] = PF_color1
+    if pf2_1 & 0x02:
+        screen[52:56, line_visible] = PF_color1
+    if pf2_1 & 0x04:
+        screen[56:60, line_visible] = PF_color1
+    if pf2_1 & 0x08:
+        screen[60:64, line_visible] = PF_color1
+    if pf2_1 & 0x10:
+        screen[64:68, line_visible] = PF_color1
+    if pf2_1 & 0x20:
+        screen[68:72, line_visible] = PF_color1
+    if pf2_1 & 0x40:
+        screen[72:76, line_visible] = PF_color1
     if pf2_1 & 0x80:
-        screen[line_visible][76:80] = PF_color1
+        screen[76:80, line_visible]= PF_color1
 
     # right-side
     if not pf_mirror:
         if pf0_2 & 0x10: 
-            screen[line_visible][80:84]   = PF_color2
+            screen[80:84, line_visible]   = PF_color2
         if pf0_2 & 0x20: 
-            screen[line_visible][84:88]   = PF_color2
+            screen[84:88, line_visible]   = PF_color2
         if pf0_2 & 0x40: 
-            screen[line_visible][88:92]   = PF_color2
+            screen[88:92, line_visible]   = PF_color2
         if pf0_2 & 0x80: 
-            screen[line_visible][92:96]   = PF_color2
+            screen[92:96, line_visible]   = PF_color2
         if pf1_2 & 0x80: 
-            screen[line_visible][96:100]  = PF_color2
+            screen[96:100, line_visible]  = PF_color2
         if pf1_2 & 0x40: 
-            screen[line_visible][100:104] = PF_color2
+            screen[100:104, line_visible] = PF_color2
         if pf1_2 & 0x20: 
-            screen[line_visible][104:108] = PF_color2
+            screen[104:108, line_visible] = PF_color2
         if pf1_2 & 0x10: 
-            screen[line_visible][108:112] = PF_color2
+            screen[108:112, line_visible] = PF_color2
         if pf1_2 & 0x08: 
-            screen[line_visible][112:116] = PF_color2
+            screen[112:116, line_visible] = PF_color2
         if pf1_2 & 0x04: 
-            screen[line_visible][116:120] = PF_color2
+            screen[116:120, line_visible] = PF_color2
         if pf1_2 & 0x02: 
-            screen[line_visible][120:124] = PF_color2
+            screen[120:124, line_visible] = PF_color2
         if pf1_2 & 0x01: 
-            screen[line_visible][124:128] = PF_color2
+            screen[124:128, line_visible] = PF_color2
         if pf2_2 & 0x01: 
-            screen[line_visible][128:132] = PF_color2
+            screen[128:132, line_visible] = PF_color2
         if pf2_2 & 0x02: 
-            screen[line_visible][132:136] = PF_color2
+            screen[132:136, line_visible] = PF_color2
         if pf2_2 & 0x04: 
-            screen[line_visible][136:140] = PF_color2
+            screen[136:140, line_visible] = PF_color2
         if pf2_2 & 0x08: 
-            screen[line_visible][140:144] = PF_color2
+            screen[140:144, line_visible] = PF_color2
         if pf2_2 & 0x10: 
-            screen[line_visible][144:148] = PF_color2
+            screen[144:148, line_visible] = PF_color2
         if pf2_2 & 0x20: 
-            screen[line_visible][148:152] = PF_color2
+            screen[148:152, line_visible] = PF_color2
         if pf2_2 & 0x40: 
-            screen[line_visible][152:160] = PF_color2
+            screen[152:156, line_visible] = PF_color2
         if pf2_2 & 0x80: 
-            screen[line_visible][160:164] = PF_color2
+            screen[156:160, line_visible] = PF_color2
     else:
         if pf2_2 & 0x80: 
-            screen[line_visible][80:84]   = PF_color2
+            screen[80:84, line_visible]   = PF_color2
         if pf2_2 & 0x40: 
-            screen[line_visible][84:88]   = PF_color2
+            screen[84:88, line_visible]   = PF_color2
         if pf2_2 & 0x20: 
-            screen[line_visible][88:92]   = PF_color2
+            screen[88:92, line_visible]   = PF_color2
         if pf2_2 & 0x10: 
-            screen[line_visible][92:96]   = PF_color2
+            screen[92:96, line_visible]   = PF_color2
         if pf2_2 & 0x08: 
-            screen[line_visible][96:100]  = PF_color2
+            screen[96:100, line_visible]  = PF_color2
         if pf2_2 & 0x04: 
-            screen[line_visible][100:104] = PF_color2
+            screen[100:104, line_visible] = PF_color2
         if pf2_2 & 0x02: 
-            screen[line_visible][104:108] = PF_color2
+            screen[104:108, line_visible] = PF_color2
         if pf2_2 & 0x01: 
-            screen[line_visible][108:112] = PF_color2
+            screen[108:112, line_visible] = PF_color2
         if pf1_2 & 0x01: 
-            screen[line_visible][112:116] = PF_color2
+            screen[112:116, line_visible] = PF_color2
         if pf1_2 & 0x02: 
-            screen[line_visible][116:120] = PF_color2
+            screen[116:120, line_visible] = PF_color2
         if pf1_2 & 0x04: 
-            screen[line_visible][120:124] = PF_color2
+            screen[120:124, line_visible] = PF_color2
         if pf1_2 & 0x08: 
-            screen[line_visible][124:128] = PF_color2
+            screen[124:128, line_visible] = PF_color2
         if pf1_2 & 0x10: 
-            screen[line_visible][128:132] = PF_color2
+            screen[128:132, line_visible] = PF_color2
         if pf1_2 & 0x20: 
-            screen[line_visible][132:136] = PF_color2
+            screen[132:136, line_visible] = PF_color2
         if pf1_2 & 0x40: 
-            screen[line_visible][136:140] = PF_color2
+            screen[136:140, line_visible] = PF_color2
         if pf1_2 & 0x80: 
-            screen[line_visible][140:144] = PF_color2
+            screen[140:144, line_visible] = PF_color2
         if pf0_2 & 0x80: 
-            screen[line_visible][144:148] = PF_color2
+            screen[144:148, line_visible] = PF_color2
         if pf0_2 & 0x40: 
-            screen[line_visible][148:152] = PF_color2
+            screen[148:152, line_visible] = PF_color2
         if pf0_2 & 0x20: 
-            screen[line_visible][152:160] = PF_color2
+            screen[152:156, line_visible] = PF_color2
         if pf0_2 & 0x10: 
-            screen[line_visible][160:164] = PF_color2
+            screen[156:160, line_visible] = PF_color2
     #k=0
     #for j in range(8):
     #    if pf0_1 & (0x10<<j) and j < 4: 
-    #        screen[line_visible][k:k+4]     = PF_color1
+    #        screen[k:k+4, line_visible]     = PF_color1
     #    if pf1_1 & (0x80>>j): 
-    #        screen[line_visible][k+16:k+20] = PF_color1
+    #        screen[k+16:k+20, line_visible] = PF_color1
     #    if pf2_1 & (0x01<<j): 
-    #        screen[line_visible][k+48:k+52] = PF_color1
+    #        screen[k+48:k+52, line_visible] = PF_color1
     #    if not pf_mirror:
     #        if pf0_2 & (0x10<<j) and j < 4: 
-    #            screen[line_visible][k+80:k+84]   = PF_color2 # Assuming no mirror
+    #            screen[k+80:k+84, line_visible]   = PF_color2 # Assuming no mirror
     #        if pf1_2 & (0x80>>j): 
-    #            screen[line_visible][k+96:k+100]  = PF_color2
+    #            screen[k+96:k+100, line_visible]  = PF_color2
     #        if pf2_2 & (0x01<<j): 
-    #            screen[line_visible][k+128:k+132] = PF_color2
+    #            screen[k+128:k+132, line_visible] = PF_color2
     #    else:
     #        if pf2_2 & (0x80>>j): 
-    #            screen[line_visible][k+80:k+84]   = PF_color2 # Assuming mirror
+    #            screen[k+80:k+84, line_visible]   = PF_color2 # Assuming mirror
     #        if pf1_2 & (0x01<<j): 
-    #            screen[line_visible][k+112:k+116] = PF_color2
+    #            screen[k+112:k+116, line_visible] = PF_color2
     #        if pf0_2 & (0x80>>j) and j < 4: 
-    #            screen[line_visible][k+144:k+148] = PF_color2 # Assuming no mirror
+    #            screen[k+144:k+148, line_visible] = PF_color2 # Assuming no mirror
     #    k += 4
 
     a2 = time.clock()
-    print(a2-a1)
+    #print(a2-a1)
 #
 #    # Update Ball
-#    screen[line][BALL_pos] = BALL_color # Assuming one pixel size
+#    screen[BALL_pos, line] = BALL_color # Assuming one pixel size
 #
     # Update GPs and missiles
     size = 1
@@ -1674,11 +1695,11 @@ def draw_line():
     P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
     for i in range(8):
         if memory[GRP0] & (0x80>>i):
-            screen[line - 40][P0_pos + i:P0_pos + i + 1] = P0_color # Assuming one pixel size
+            screen[P0_pos + i:P0_pos + i + 1, line - 40] = P0_color # Assuming one pixel size
         if memory[GRP1] & (0x80>>i):
-            screen[line - 40][P1_pos + i:P1_pos + i + 1] = P1_color # Assuming one pixel size
-        #screen[line - 40][GP1_pos + i] = GP1_color
-        #screen[line - 40][MP1_pos + i] = GP1_color
+            screen[P1_pos + i:P1_pos + i + 1, line - 40] = P1_color # Assuming one pixel size
+        #screen[GP1_pos + i, line - 40] = GP1_color
+        #screen[MP1_pos + i, line - 40] = GP1_color
 
 
 
@@ -1707,7 +1728,8 @@ for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
 
 pygame.init()
-display = pygame.display.set_mode((192,160))
+#display = pygame.display.set_mode((192,160))
+display = pygame.display.set_mode([160,192], flags = pygame.SCALED)
 
 PC = 0x1000
 ss = 0
@@ -1760,10 +1782,15 @@ for i in range(1900*401):
             t1 = t2
             line = 0
             ss +=1
-            ss = 0
+            #ss = 0
             if ss%20 == 0:
+                #screen2 = np.zeros((160, 192, 3), dtype=np.uint8)
+                #for i1 in range(192):
+                #  for i2 in range(160):
+                #      screen2[i2, i1] = screen[i1, i2]
                 pass
                 pygame.surfarray.blit_array(display, screen)
+                #pygame.surfarray.blit_array(display, screen2)
                 pygame.display.update()
                 #ax.imshow(screen, aspect=0.5)
                 #print screen.shape
