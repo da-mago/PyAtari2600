@@ -1708,7 +1708,7 @@ import time
 
 #f = open("Indy500.a26", "rb")
 #f = open("3_Bars_Background.bin", "rb")
-f = open("kernel_13.bin", "rb")
+f = open("kernel_15.bin", "rb")
 rom = f.read()
 f.close()
 
