@@ -13,7 +13,6 @@ memory = [0 for x in range(2**13)] # Memory map
 num_cycles = 0    # Atari clock cycles
 page_crossed = 0
 line = 0
-#screen = [[[0,0,0] for i in range(160)] for j in range(192)]
 screen = np.zeros((160, 192, 3), dtype=np.uint8)
 colubk = [[0,0]] # List of background colour changes during the line
 # Playfield (40 bits)
@@ -1704,18 +1703,7 @@ def draw_line():
 
 
 
-import matplotlib.pyplot as plt
 import time
-
-# make sure Tk backend is used
-import matplotlib
-matplotlib.use("TkAgg")  
-plt.rcParams['toolbar'] = 'None'              # remove toolbar
-fig = plt.figure()
-ax = plt.Axes(fig, [0., 0., 1., 1.])
-ax.set_axis_off()                             # remove axis
-fig.add_axes(ax)
-fig.canvas.manager.window.overrideredirect(1) # remove window frame
 
 
 #f = open("Indy500.a26", "rb")
@@ -1728,7 +1716,6 @@ for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
 
 pygame.init()
-#display = pygame.display.set_mode((192,160))
 display = pygame.display.set_mode([160,192], flags = pygame.SCALED)
 
 PC = 0x1000
@@ -1782,20 +1769,11 @@ for i in range(1900*401):
             t1 = t2
             line = 0
             ss +=1
-            #ss = 0
+            ss = 0
             if ss%20 == 0:
-                #screen2 = np.zeros((160, 192, 3), dtype=np.uint8)
-                #for i1 in range(192):
-                #  for i2 in range(160):
-                #      screen2[i2, i1] = screen[i1, i2]
                 pass
                 pygame.surfarray.blit_array(display, screen)
-                #pygame.surfarray.blit_array(display, screen2)
                 pygame.display.update()
-                #ax.imshow(screen, aspect=0.5)
-                #print screen.shape
-                #plt.pause(0.000001)
-
 
 
 #
