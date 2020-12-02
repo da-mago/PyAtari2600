@@ -625,7 +625,7 @@ def eorMem_(addr):
 def incMem_(addr):
     global Z, N
 
-    val = (MEM_READ(val) + 1) & 0xff
+    val = (MEM_READ(addr) + 1) & 0xff
     MEM_WRITE_ZEROPAGE(addr, val)
     Z = val == 0
     N = (val & 0x80) != 0
@@ -656,7 +656,7 @@ def iny_(val):
 def jmp_(val):    
     global PC
     
-    PC = (val - 3) & MAX_MEM_ADDR
+    PC = val & MAX_MEM_ADDR
 
     return 0
     
@@ -671,7 +671,7 @@ def jsr_(val):
     memory[STACK_ADDR + SP - 1] = PC >> 8
     SP -= 2
     # update PC
-    PC = val - 3
+    PC = val
 
     return 0
 
@@ -684,7 +684,10 @@ def lda_(val):
     Z = A == 0
     N = (A & 0x80) != 0
     
-    return page_crossed
+    return 0
+
+def ldaMem_(addr):    
+    return lda_(MEM_READ(addr))
 
 # LDX
 def ldx_(val):    
@@ -695,7 +698,10 @@ def ldx_(val):
     Z = X == 0
     N = (X & 0x80) != 0
 
-    return page_crossed
+    return 0
+
+def ldxMem_(addr):
+    return ldx_(MEM_READ(addr))
 
 # LDY
 def ldy_(val):    
@@ -706,56 +712,32 @@ def ldy_(val):
     Z = Y == 0
     N = (Y & 0x80) != 0
 
-    return page_crossed
+    return 0
+
+def ldyMem_(addr):
+    return ldy_(MEM_READ(addr))
 
 # LSR
-def lsr_(val):
+def lsr_(unused):
     global Z, N
     
-    res = val / 2
+    C = (A & 0x01) != 0
+    A = A >> 1
+    Z = (A == 0)
+    N = (A & 0x80) != 0
+    
+    return 0
+
+def lsrMem_(addr):
+    global Z, N
+    
+    val = MEM_READ(addr)
     C = (val & 0x01) != 0
-    Z = (res == 0)
-    N = (res & 0x80) != 0
+    val = val >> 1
+    MEM_WRITE(addr, val)
+    Z = (val == 0)
+    N = (val & 0x80) != 0
     
-    return res
-
-def lsrAcc_(val):    
-    global A
-
-    A = lsr_(A)
-
-    return 0
-
-def lsrZP_(val):    
-
-    old = MEM_READ_ZEROPAGE(val)
-    new = lsr_(old)
-    MEM_WRITE_ZEROPAGE(val, new)
-
-    return 0
-
-def lsrZPX_(val):    
-    
-    old = MEM_READ_ZEROPAGE_X(val)
-    new = lsr_(old)
-    MEM_WRITE_ZEROPAGE_X(val, new)
-
-    return 0
-
-def lsrABS_(val):    
-    
-    old = MEM_READ_ABSOLUTE(val)
-    new = lsr_(old)
-    MEM_WRITE_ABSOLUTE(val, new)
-
-    return 0
-
-def lsrABSX_(val):    
-    
-    old = MEM_READ_ABSOLUTE_X(val)
-    new = lsr_(old)
-    MEM_WRITE_ABSOLUTE_X(val, new)
-
     return 0
 
 def nop_(val):    
@@ -765,11 +747,14 @@ def ora_(val):
     global A
     global Z,N
 
-    A |= val
+    A = A | val
     Z = (A == 0)
     N = (A & 0x80) != 0
 
-    return page_crossed
+    return 0
+
+def oraMem_(addr):    
+    return ora_(MEM_READ(addr))
 
 def pha_(val):    
     global SP
@@ -793,8 +778,8 @@ def pla_(val):
     global A, SP
     global Z, N
 
-    A = memory[STACK_ADDR + SP]
     SP = SP + 1
+    A = memory[STACK_ADDR + SP]
     Z = A == 0 
     N = (A & 0x80 != 0) 
 
@@ -804,9 +789,9 @@ def plp_(val):
     global SP
     global C,Z,I,D,B,V,N
 
+    SP = SP + 1
     tmp = memory[STACK_ADDR + SP]
     PSW_SET(tmp)
-    SP = SP + 1
 
     return 0
 
@@ -1247,85 +1232,83 @@ opcode_table[0xe8] = [inx_,      MEM_READ_ZEROPAGE,       1,     2,      0]
 # INY
 opcode_table[0xc8] = [iny_,      MEM_READ_ZEROPAGE,       1,     2,      0]
 
-#TODO: Voy por aqui
 # JMP
-#opcode_table[0x4c] = [jmp_, MEM_READ_ABSOLUTE,       3,     ,      03]
-#opcode_table[0x6c] = [jmp_, MEM_READ_INDIRECT,       3,     ,      05]
-opcode_table[0x4c] = [jmp_, IMMEDIATE,               3,     3,      0]
-opcode_table[0x6c] = [jmp_, MEM_READ_ABSOLUTE,       3,     5,      0]
+opcode_table[0x4c] = [jmp_,      MEM_READ_ABSOLUTE,       3,     3,      0]
+opcode_table[0x6c] = [jmp_,      MEM_READ_INDIRECT,       3,     5,      0]
 
 # JSR
-opcode_table[0x20] = [jsr_, IMMEDIATE,               3,     6,      0]
+opcode_table[0x20] = [jsr_,      MEM_READ_ABSOLUTE,       3,     6,      0]
 
 # LDA
-opcode_table[0xa9] = [lda_, IMMEDIATE,               2,     2,      0]
-opcode_table[0xa5] = [lda_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0xb5] = [lda_, MEM_READ_ZEROPAGE_X,     2,     4,      0]
-opcode_table[0xad] = [lda_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0xbd] = [lda_, MEM_READ_ABSOLUTE_X,     3,     4,      0]
-opcode_table[0xb9] = [lda_, MEM_READ_ABSOLUTE_Y,     3,     4,      0]
-opcode_table[0xa1] = [lda_, MEM_READ_INDIRECT_X,     2,     6,      0]
-opcode_table[0xb1] = [lda_, MEM_READ_INDIRECT_Y,     2,     5,      0]
+opcode_table[0xa9] = [lda_,      IMMEDIATE,               2,     2,      0]
+opcode_table[0xa5] = [ldaMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0xb5] = [ldaMem_,   MEM_READ_ZEROPAGE_X,     2,     4,      0]
+opcode_table[0xad] = [ldaMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0xbd] = [ldaMem_,   MEM_READ_ABSOLUTE_X,     3,     4,      1]
+opcode_table[0xb9] = [ldaMem_,   MEM_READ_ABSOLUTE_Y,     3,     4,      1]
+opcode_table[0xa1] = [ldaMem_,   MEM_READ_INDIRECT_X,     2,     6,      0]
+opcode_table[0xb1] = [ldaMem_,   MEM_READ_INDIRECT_Y,     2,     5,      1]
 
 # LDX
-opcode_table[0xa2] = [ldx_, IMMEDIATE,               2,     2,      0]
-opcode_table[0xa6] = [ldx_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0xb6] = [ldx_, MEM_READ_ZEROPAGE_Y,     2,     4,      0]
-opcode_table[0xa3] = [ldx_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0xbe] = [ldx_, MEM_READ_ABSOLUTE_Y,     3,     4,      0]
+opcode_table[0xa2] = [ldx_,      IMMEDIATE,               2,     2,      0]
+opcode_table[0xa6] = [ldxMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0xb6] = [ldxMem_,   MEM_READ_ZEROPAGE_Y,     2,     4,      0]
+opcode_table[0xa3] = [ldxMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0xbe] = [ldxMem_,   MEM_READ_ABSOLUTE_Y,     3,     4,      1]
 
 # LDY
-opcode_table[0xa0] = [ldy_, IMMEDIATE,               2,     2,      0]
-opcode_table[0xa4] = [ldy_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0xb4] = [ldy_, MEM_READ_ZEROPAGE_X,     2,     4,      0]
-opcode_table[0xac] = [ldy_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0xbc] = [ldy_, MEM_READ_ABSOLUTE_X,     3,     4,      0]
+opcode_table[0xa0] = [ldy_,      IMMEDIATE,               2,     2,      0]
+opcode_table[0xa4] = [ldyMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0xb4] = [ldyMem_,   MEM_READ_ZEROPAGE_X,     2,     4,      0]
+opcode_table[0xac] = [ldyMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0xbc] = [ldyMem_,   MEM_READ_ABSOLUTE_X,     3,     4,      1]
 
 # LSR
-opcode_table[0x4a] = [lsrAcc_,  IMMEDIATE,           1,     2,      0]
-opcode_table[0x46] = [lsrZP_,   IMMEDIATE,           2,     5,      0]
-opcode_table[0x56] = [lsrZPX_,  IMMEDIATE,           2,     6,      0]
-opcode_table[0x4e] = [lsrABS_,  IMMEDIATE,           3,     6,      0]
-opcode_table[0x5e] = [lsrABSX_, IMMEDIATE,           3,     7,      0]
+opcode_table[0x4a] = [lsrAcc_,   IMMEDIATE,               1,     2,      0]
+opcode_table[0x46] = [lsrMem_,   MEM_READ_ZEROPAGE,       2,     5,      0]
+opcode_table[0x56] = [lsrMem_,   MEM_READ_ZEROPAGE_X,     2,     6,      0]
+opcode_table[0x4e] = [lsrMem_,   MEM_READ_ABSOLUTE,       3,     6,      0]
+opcode_table[0x5e] = [lsrMem_,   MEM_READ_ABSOLUTE_X,     3,     7,      0]
 
 # NOP
-opcode_table[0xea] = [nop_,  IMMEDIATE,              1,     2,      0]
+opcode_table[0xea] = [nop_,      IMMEDIATE,               1,     2,      0]
 
 # ORA
-opcode_table[0x09] = [ora_, IMMEDIATE,               2,     2,      0]
-opcode_table[0x05] = [ora_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0x15] = [ora_, MEM_READ_ZEROPAGE_X,     2,     4,      0]
-opcode_table[0x0d] = [ora_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0x1d] = [ora_, MEM_READ_ABSOLUTE_X,     3,     4,      0]
-opcode_table[0x19] = [ora_, MEM_READ_ABSOLUTE_Y,     3,     4,      0]
-opcode_table[0x01] = [ora_, MEM_READ_INDIRECT_X,     2,     6,      0]
-opcode_table[0x11] = [ora_, MEM_READ_INDIRECT_Y,     2,     5,      0]
+opcode_table[0x09] = [ora_,      IMMEDIATE,               2,     2,      0]
+opcode_table[0x05] = [oraMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0x15] = [oraMem_,   MEM_READ_ZEROPAGE_X,     2,     4,      0]
+opcode_table[0x0d] = [oraMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0x1d] = [oraMem_,   MEM_READ_ABSOLUTE_X,     3,     4,      1]
+opcode_table[0x19] = [oraMem_,   MEM_READ_ABSOLUTE_Y,     3,     4,      1]
+opcode_table[0x01] = [oraMem_,   MEM_READ_INDIRECT_X,     2,     6,      0]
+opcode_table[0x11] = [oraMem_,   MEM_READ_INDIRECT_Y,     2,     5,      1]
 
 # PHA
-opcode_table[0x48] = [pha_, IMMEDIATE,               1,     3,      0]
+opcode_table[0x48] = [pha_,      IMMEDIATE,               1,     3,      0]
 
 # PHP
-opcode_table[0x08] = [php_, IMMEDIATE,               1,     3,      0]
+opcode_table[0x08] = [php_,      IMMEDIATE,               1,     3,      0]
 
 # PLA
-opcode_table[0x68] = [pla_, IMMEDIATE,               1,     4,      0]
+opcode_table[0x68] = [pla_,      IMMEDIATE,               1,     4,      0]
 
 # PLP
-opcode_table[0x28] = [plp_, IMMEDIATE,               1,     4,      0]
+opcode_table[0x28] = [plp_,      IMMEDIATE,               1,     4,      0]
 
+#TODO: Voy por aqui
 # ROL
-opcode_table[0x2a] = [rolAcc_,  IMMEDIATE,           1,     2,      0]
-opcode_table[0x26] = [rolZP_,   IMMEDIATE,           2,     5,      0]
-opcode_table[0x36] = [rolZPX_,  IMMEDIATE,           2,     6,      0]
-opcode_table[0x2e] = [rolABS_,  IMMEDIATE,           3,     6,      0]
-opcode_table[0x3e] = [rolABSX_, IMMEDIATE,           3,     7,      0]
+opcode_table[0x2a] = [rolAcc_,   IMMEDIATE,               1,     2,      0]
+opcode_table[0x26] = [rolMem_,   MEM_READ_ZEROPAGE,       2,     5,      0]
+opcode_table[0x36] = [rolMem_,   MEM_READ_ZEROPAGE_X,     2,     6,      0]
+opcode_table[0x2e] = [rolMem_,   MEM_READ_ABSOLUTE,       3,     6,      0]
+opcode_table[0x3e] = [rolMem_,   MEM_READ_ABSOLUTE_X,     3,     7,      0]
 
-# ROR                                                
-opcode_table[0x6a] = [rorAcc_,  IMMEDIATE,           1,     2,      0]
-opcode_table[0x66] = [rorZP_,   IMMEDIATE,           2,     5,      0]
-opcode_table[0x76] = [rorZPX_,  IMMEDIATE,           2,     6,      0]
-opcode_table[0x6e] = [rorABS_,  IMMEDIATE,           3,     6,      0]
-opcode_table[0x7e] = [rorABSX_, IMMEDIATE,           3,     7,      0]
+# ROR                                                 
+opcode_table[0x6a] = [rorAcc_,   IMMEDIATE,               1,     2,      0]
+opcode_table[0x66] = [rorMem_,   MEM_READ_ZEROPAGE,       2,     5,      0]
+opcode_table[0x76] = [rorMem_,   MEM_READ_ZEROPAGE_X,     2,     6,      0]
+opcode_table[0x6e] = [rorMem_,   MEM_READ_ABSOLUTE,       3,     6,      0]
+opcode_table[0x7e] = [rorMem_,   MEM_READ_ABSOLUTE_X,     3,     7,      0]
 
 # RTI                                                
 opcode_table[0x40] = [pla_, IMMEDIATE,               1,     6,      0]
