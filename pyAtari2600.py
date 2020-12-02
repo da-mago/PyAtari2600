@@ -615,44 +615,20 @@ def eor_(val):
 
     return page_crossed
 
+def eorMem_(addr):
+    val = MEM_READ(addr)
+    A ^= val
+    Z = A == 0
+    N = (A & 0x80) != 0
+
 # INC
-def incZP_(val):
+def incMem_(addr):
     global Z, N
 
-    res = MEM_READ_ZEROPAGE(val) + 1
-    MEM_WRITE_ZEROPAGE(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
-
-    return 0
-
-def incZPX_(val):
-    global Z, N
-
-    res = MEM_READ_ZEROPAGE_X(val) + 1
-    MEM_WRITE_ZEROPAGE_X(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
-
-    return 0
-
-def incABS_(val):
-    global Z, N
-    
-    res = MEM_READ_ABSOLUTE(val) + 1
-    MEM_WRITE_ABSOLUTE(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
-
-    return 0
-
-def incABSX_(val):    
-    global Z, N
-
-    res = MEM_READ_ABSOLUTE_X(val) + 1
-    MEM_WRITE_ABSOLUTE_X(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
+    val = (MEM_READ(val) + 1) & 0xff
+    MEM_WRITE_ZEROPAGE(addr, val)
+    Z = val == 0
+    N = (val & 0x80) != 0
 
     return 0
 
@@ -1249,29 +1225,29 @@ opcode_table[0xca] = [dex_,      MEM_READ_ZEROPAGE,     1,     2,      0]
 # DEY
 opcode_table[0x88] = [dey_,      MEM_READ_ZEROPAGE,     1,     2,      0]
 
-#TODO: Voy por aqui
 # EOR
-opcode_table[0x49] = [eor_, IMMEDIATE,               2,     2,      0]
-opcode_table[0x45] = [eor_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0x55] = [eor_, MEM_READ_ZEROPAGE_X,     2,     4,      0]
-opcode_table[0x4d] = [eor_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0x5d] = [eor_, MEM_READ_ABSOLUTE_X,     3,     4,      0]
-opcode_table[0x59] = [eor_, MEM_READ_ABSOLUTE_Y,     3,     4,      0]
-opcode_table[0x41] = [eor_, MEM_READ_INDIRECT_X,     2,     6,      0]
-opcode_table[0x51] = [eor_, MEM_READ_INDIRECT_Y,     2,     5,      0]
+opcode_table[0x49] = [eor_,      IMMEDIATE,              2,     2,      0]
+opcode_table[0x45] = [eorMem_,   MEM_READ_ZEROPAGE,      2,     3,      0]
+opcode_table[0x55] = [eorMem_,   MEM_READ_ZEROPAGE_X,    2,     4,      0]
+opcode_table[0x4d] = [eorMem_,   MEM_READ_ABSOLUTE,      3,     4,      0]
+opcode_table[0x5d] = [eorMem_,   MEM_READ_ABSOLUTE_X,    3,     4,      1]
+opcode_table[0x59] = [eorMem_,   MEM_READ_ABSOLUTE_Y,    3,     4,      1]
+opcode_table[0x41] = [eorMem_,   MEM_READ_INDIRECT_X,    2,     6,      0]
+opcode_table[0x51] = [eorMem_,   MEM_READ_INDIRECT_Y,    2,     5,      1]
 
 # INC
-opcode_table[0xe6] = [incZP_,   IMMEDIATE,           2,     5,      0]
-opcode_table[0xf6] = [incZPX_,  IMMEDIATE,           2,     6,      0]
-opcode_table[0xee] = [incABS_,  IMMEDIATE,           3,     6,      0]
-opcode_table[0xfe] = [incABSX_, IMMEDIATE,           3,     7,      0]
+opcode_table[0xe6] = [incMem_,   MEM_READ_ZEROPAGE,       2,     5,      0]
+opcode_table[0xf6] = [incMem_,   MEM_READ_ZEROPAGE_X,     2,     6,      0]
+opcode_table[0xee] = [incMem_,   MEM_READ_ABSOLUTE,       3,     6,      0]
+opcode_table[0xfe] = [incMem_,   MEM_READ_ABSOLUTE_X,     3,     7,      0]
 
 # INX
-opcode_table[0xe8] = [inx_, MEM_READ_ZEROPAGE,       1,     2,      0]
+opcode_table[0xe8] = [inx_,      MEM_READ_ZEROPAGE,       1,     2,      0]
 
 # INY
-opcode_table[0xc8] = [iny_, MEM_READ_ZEROPAGE,       1,     2,      0]
+opcode_table[0xc8] = [iny_,      MEM_READ_ZEROPAGE,       1,     2,      0]
 
+#TODO: Voy por aqui
 # JMP
 #opcode_table[0x4c] = [jmp_, MEM_READ_ABSOLUTE,       3,     ,      03]
 #opcode_table[0x6c] = [jmp_, MEM_READ_INDIRECT,       3,     ,      05]
