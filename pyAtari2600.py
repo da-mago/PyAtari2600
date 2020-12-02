@@ -667,8 +667,8 @@ def jsr_(val):
     #print(hex(val & MAX_MEM_ADDR))
     # push PC-1 on to the stack
     PC -= 1
-    memory[STACK_ADDR + SP]     = PC & 0xff
-    memory[STACK_ADDR + SP - 1] = PC >> 8
+    memory[STACK_ADDR + SP]     = PC >> 8
+    memory[STACK_ADDR + SP - 1] = PC & 0xff
     SP -= 2
     # update PC
     PC = val
@@ -850,8 +850,8 @@ def rti_(unused):
     global PC, SP
     global C,Z,I,D,B,V,N
 
-    PSW_SET(memory[STACK_ADDR + SP])
-    PC = memory[STACK_ADDR + SP + 1] | (memory[STACK_ADDR + SP + 2] << 8)
+    PSW_SET(memory[STACK_ADDR + SP + 1])
+    PC = memory[STACK_ADDR + SP + 2] | (memory[STACK_ADDR + SP + 3] << 8)
     SP += 3
 
     return 0
@@ -860,29 +860,32 @@ def rti_(unused):
 def rts_(unused):
     global PC, SP
 
-    PC = (memory[STACK_ADDR + SP] | (memory[STACK_ADDR + SP + 1] << 8)) - 1
+    PC = (memory[STACK_ADDR + SP + 1] | (memory[STACK_ADDR + SP + 2] << 8)) + 1
     SP += 2
 
     return 0
 
-# SBC (DMG: flags not implemented)
+# SBC (DMG: BCD mode not implemented)
 def sbc_(val):
-    global A
-    global Z,C,V,N
+    return adc_(val ^ 0xff)
+    #global A
+    #global Z,C,V,N
 
-    res = A - val
-    if not C: res -= 1
-    
-    A = res & 0xff
-    Z = A == 0
-    #C = ?
-    #V = ?
-    N = (A & 0x80) != 0
+    #res = A - val - (C - 1)
+    #
+    #A = res & 0xff
+    #Z = A == 0
+    ##C = ?
+    ##V = ?
+    #N = (A & 0x80) != 0
 
-    return page_crossed
+    #return page_crossed
+
+def sbcMem_(addr_):
+    return sbc_(MEM_READ(addr))
 
 # SEC
-def sec_(val):
+def sec_(unused):
     global C
 
     C = 1
@@ -890,7 +893,7 @@ def sec_(val):
     return 0
 
 # SED
-def sed_(val):
+def sed_(unused):
     global D
 
     D = 1
@@ -898,7 +901,7 @@ def sed_(val):
     return 0    
 
 # SEI
-def sei_(val):
+def sei_(unused):
     global I
 
     I = 1
@@ -906,83 +909,23 @@ def sei_(val):
     return 0
 
 # STA
-def staZP_(val):
+def staMem_(addr):
 
-    MEM_WRITE_ZEROPAGE(val, A)
-
-    return 0
-
-def staZPX_(val):
-
-    MEM_WRITE_ZEROPAGE_X(val, A)
-
-    return 0    
-
-def staABS_(val):
-
-    MEM_WRITE_ABSOLUTE(val, A)
+    MEM_WRITE(addr, A)
 
     return 0
-
-def staABSX_(val):
-
-    MEM_WRITE_ABSOLUTE_X(val, A)
-
-    return 0
-
-def staABSY_(val):
-
-    MEM_WRITE_ABSOLUTE_Y(val, A)
-
-    return 0    
-
-def staINDX_(val):
-
-    MEM_WRITE_INDIRECT_X(val, A)
-
-    return 0
-
-def staINDY_(val):
-
-    MEM_WRITE_INDIRECT_Y(val, A)
-
-    return 0    
 
 # STX
-def stxZP_(val):
+def stxMem_(addr):
 
-    MEM_WRITE_ZEROPAGE(val, X)
-
-    return 0
-
-def stxZPY_(val):
-
-    MEM_WRITE_ZEROPAGE_X(val, X)
-
-    return 0    
-
-def stxABS_(val):
-
-    MEM_WRITE_ABSOLUTE(val, X)
+    MEM_WRITE(addr, X)
 
     return 0
 
 # STY
-def styZP_(val):
+def styMem_(addr):
 
-    MEM_WRITE_ZEROPAGE(val, Y)
-
-    return 0
-
-def styZPX_(val):
-
-    MEM_WRITE_ZEROPAGE_X(val, Y)
-
-    return 0    
-
-def styABS_(val):
-
-    MEM_WRITE_ABSOLUTE(val, Y)
+    MEM_WRITE(addr, Y)
 
     return 0
 
@@ -1257,66 +1200,66 @@ opcode_table[0x7e] = [rorMem_,   MEM_READ_ABSOLUTE_X,     3,     7,      0]
 
 #TODO: Voy por aqui
 # RTI                                                
-opcode_table[0x40] = [pla_, IMMEDIATE,               1,     6,      0]
+opcode_table[0x40] = [rti_,      NONE,                    1,     6,      0]
 
-# RTS                                                
-opcode_table[0x60] = [plp_, IMMEDIATE,               1,     6,      0]
+# RTS                                                           
+opcode_table[0x60] = [rts_,      NONE,                    1,     6,      0]
 
 # SBC                                                
-opcode_table[0x09] = [sbc_, IMMEDIATE,               2,     2,      0]
-opcode_table[0x05] = [sbc_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0x15] = [sbc_, MEM_READ_ZEROPAGE_X,     2,     4,      0]
-opcode_table[0x0d] = [sbc_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0x1d] = [sbc_, MEM_READ_ABSOLUTE_X,     3,     4,      0]
-opcode_table[0x19] = [sbc_, MEM_READ_ABSOLUTE_Y,     3,     4,      0]
-opcode_table[0x01] = [sbc_, MEM_READ_INDIRECT_X,     2,     6,      0]
-opcode_table[0x11] = [sbc_, MEM_READ_INDIRECT_Y,     2,     5,      0]
+opcode_table[0x09] = [sbc_,      IMMEDIATE,               2,     2,      0]
+opcode_table[0x05] = [sbcMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0x15] = [sbcMem_,   MEM_READ_ZEROPAGE_X,     2,     4,      0]
+opcode_table[0x0d] = [sbcMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0x1d] = [sbcMem_,   MEM_READ_ABSOLUTE_X,     3,     4,      1]
+opcode_table[0x19] = [sbcMem_,   MEM_READ_ABSOLUTE_Y,     3,     4,      1]
+opcode_table[0x01] = [sbcMem_,   MEM_READ_INDIRECT_X,     2,     6,      0]
+opcode_table[0x11] = [sbcMem_,   MEM_READ_INDIRECT_Y,     2,     5,      1]
 
 # SEC
-opcode_table[0x38] = [sec_, IMMEDIATE,               1,     2,      0]
+opcode_table[0x38] = [sec_,      NONE,                    1,     2,      0]
 
-# SED                                                
-opcode_table[0xf8] = [sed_, IMMEDIATE,               1,     2,      0]
+# SED
+opcode_table[0xf8] = [sed_,      NONE,                    1,     2,      0]
 
-# SEI                                                
-opcode_table[0x78] = [sei_, IMMEDIATE,               1,     2,      0]
+# SEI
+opcode_table[0x78] = [sei_,      NONE,                    1,     2,      0]
 
 # STA                                                
-opcode_table[0x85] = [staZP_,   IMMEDIATE,           2,     3,      0]
-opcode_table[0x95] = [staZPX_,  IMMEDIATE,           2,     4,      0]
-opcode_table[0x8d] = [staABS_,  IMMEDIATE,           3,     4,      0]
-opcode_table[0x9d] = [staABSX_, IMMEDIATE,           3,     5,      0]
-opcode_table[0x00] = [staABSY_, IMMEDIATE,           3,     5,      0]
-opcode_table[0x81] = [staINDX_, IMMEDIATE,           2,     6,      0]
-opcode_table[0x91] = [staINDY_, IMMEDIATE,           2,     6,      0]
+opcode_table[0x85] = [staMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0x95] = [staMem_,   MEM_READ_ZEROPAGE_X,     2,     4,      0]
+opcode_table[0x8d] = [staMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0x9d] = [staMem_,   MEM_READ_ABSOLUTE_X,     3,     5,      0]
+opcode_table[0x00] = [staMem_,   MEM_READ_ABSOLUTE_Y,     3,     5,      0]
+opcode_table[0x81] = [staMem_,   MEM_READ_INDIRECT_X,     2,     6,      0]
+opcode_table[0x91] = [staMem_,   MEM_READ_INDIRECT_Y,     2,     6,      0]
 
 # STX                                                
-opcode_table[0x86] = [stxZP_,   IMMEDIATE,           2,     3,      0]
-opcode_table[0x96] = [stxZPY_,  IMMEDIATE,           2,     4,      0]
-opcode_table[0x8e] = [stxABS_,  IMMEDIATE,           3,     4,      0]
+opcode_table[0x86] = [stxMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0x96] = [stxMem_,   MEM_READ_ZEROPAGE_Y,     2,     4,      0]
+opcode_table[0x8e] = [stxMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
 
 # STY                                                
-opcode_table[0x84] = [styZP_,   IMMEDIATE,           2,     3,      0]
-opcode_table[0x94] = [styZPX_,  IMMEDIATE,           2,     4,      0]
-opcode_table[0x8c] = [styABS_,  IMMEDIATE,           3,     4,      0]
+opcode_table[0x84] = [styMem_,   MEM_READ_ZEROPAGE,       2,     3,      0]
+opcode_table[0x94] = [styMem_,   MEM_READ_ZEROPAGE_X,     2,     4,      0]
+opcode_table[0x8c] = [styMem_,   MEM_READ_ABSOLUTE,       3,     4,      0]
 
 # TAX                                                
-opcode_table[0xaa] = [tax_,   NONE,                  1,     2,      0]
+opcode_table[0xaa] = [tax_,      NONE,                    1,     2,      0]
 
-# TAY                                                
-opcode_table[0xaa] = [tay_,   NONE,                  1,     2,      0]
+# TAY                                                     
+opcode_table[0xaa] = [tay_,      NONE,                    1,     2,      0]
 
-# TSX                                                
-opcode_table[0xba] = [tsx_,   NONE,                  1,     2,      0]
+# TSX                                                     
+opcode_table[0xba] = [tsx_,      NONE,                    1,     2,      0]
 
-# TSA                                                
-opcode_table[0x8a] = [tsa_,   NONE,                  1,     2,      0]
+# TSA                                                     
+opcode_table[0x8a] = [tsa_,      NONE,                    1,     2,      0]
 
-# TXS                                                
-opcode_table[0x9a] = [txs_,   NONE,                  1,     2,      0]
+# TXS                                                     
+opcode_table[0x9a] = [txs_,      NONE,                    1,     2,      0]
 
-# TYA                                                
-opcode_table[0x98] = [tya_,   NONE,                  1,     2,      0]
+# TYA                                                     
+opcode_table[0x98] = [tya_,      NONE,                    1,     2,      0]
 
 
 def draw_line():
