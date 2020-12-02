@@ -528,7 +528,7 @@ def cli_(val):
 def clv_(val):
     global V
 
-    V = 0
+    V = False
 
     return 0
     
@@ -538,9 +538,12 @@ def cmp_(val):
 
     Z = A == val
     C = A >= val
-    N = ((A - val) & 0x80) != 0
+    N = (((A - val)%256) & 0x80) != 0
 
-    return page_crossed # +1 if page crossed)
+    return 0
+
+def cmpMem_(addr):
+    return cmp_(MEM_READ(addr))
 
 # CPX
 def cpx_(val):
@@ -548,9 +551,12 @@ def cpx_(val):
 
     Z = X == val
     C = X >= val
-    N = ((X - val) & 0x80) != 0
+    N = (((X - val)%256) & 0x80) != 0
 
     return 0
+
+def cpxMem_(addr):
+    return cpx_(MEM_READ(addr))
 
 # CPY
 def cpy_(val):
@@ -558,9 +564,12 @@ def cpy_(val):
 
     Z = Y == val
     C = Y >= val
-    N = ((Y - val) & 0x80) != 0
+    N = (((Y - val)%256) & 0x80) != 0
 
     return 0
+
+def cpyMem_(addr):
+    return cpy_(MEM_READ(addr))
 
 # DEC
 def decZP_(val):
@@ -1226,7 +1235,6 @@ opcode_table[0x50] = [bvc_,      RELATIVE,              2,     2,      0]
 # BVS
 opcode_table[0x70] = [bvs_,      RELATIVE,              2,     2,      0]
 
-#TODO: Voy por aqui
 # CLC                                                   
 opcode_table[0x18] = [clc_,      NONE,                  1,     2,      0]
 
@@ -1240,25 +1248,26 @@ opcode_table[0x58] = [cli_,      NONE,                  1,     2,      0]
 opcode_table[0xb8] = [clv_,      NONE,                  1,     2,      0]
 
 # CMP                                                
-opcode_table[0xc9] = [cmp_, IMMEDIATE,               2,     2,      0]
-opcode_table[0xc5] = [cmp_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0xd5] = [cmp_, MEM_READ_ZEROPAGE_X,     2,     4,      0]
-opcode_table[0xcd] = [cmp_, MEM_READ_ABSOLUTE,       3,     4,      0]
-opcode_table[0xdd] = [cmp_, MEM_READ_ABSOLUTE_X,     3,     4,      0]
-opcode_table[0xd9] = [cmp_, MEM_READ_ABSOLUTE_Y,     3,     4,      0]
-opcode_table[0xc1] = [cmp_, MEM_READ_INDIRECT_X,     2,     6,      0]
-opcode_table[0xd1] = [cmp_, MEM_READ_INDIRECT_Y,     2,     5,      0]
+opcode_table[0xc9] = [cmp_,      IMMEDIATE,             2,     2,      0]
+opcode_table[0xc5] = [cmpMem_,   MEM_READ_ZEROPAGE,     2,     3,      0]
+opcode_table[0xd5] = [cmpMem_,   MEM_READ_ZEROPAGE_X,   2,     4,      0]
+opcode_table[0xcd] = [cmpMem_,   MEM_READ_ABSOLUTE,     3,     4,      0]
+opcode_table[0xdd] = [cmpMem_,   MEM_READ_ABSOLUTE_X,   3,     4,      0]
+opcode_table[0xd9] = [cmpMem_,   MEM_READ_ABSOLUTE_Y,   3,     4,      0]
+opcode_table[0xc1] = [cmpMem_,   MEM_READ_INDIRECT_X,   2,     6,      0]
+opcode_table[0xd1] = [cmpMem_,   MEM_READ_INDIRECT_Y,   2,     5,      0]
 
 # CPX
-opcode_table[0xe0] = [cpx_, IMMEDIATE,               2,     2,      0]
-opcode_table[0xe4] = [cpx_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0xec] = [cpx_, MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0xe0] = [cpx_,      IMMEDIATE,             2,     2,      0]
+opcode_table[0xe4] = [cpxMem_,   MEM_READ_ZEROPAGE,     2,     3,      0]
+opcode_table[0xec] = [cpxMem_,   MEM_READ_ABSOLUTE,     3,     4,      0]
 
 # CPY
-opcode_table[0xc0] = [cpy_, IMMEDIATE,               2,     2,      0]
-opcode_table[0xc4] = [cpy_, MEM_READ_ZEROPAGE,       2,     3,      0]
-opcode_table[0xcc] = [cpy_, MEM_READ_ABSOLUTE,       3,     4,      0]
+opcode_table[0xc0] = [cpy_,      IMMEDIATE,             2,     2,      0]
+opcode_table[0xc4] = [cpyMem_,   MEM_READ_ZEROPAGE,     2,     3,      0]
+opcode_table[0xcc] = [cpyMem_,   MEM_READ_ABSOLUTE,     3,     4,      0]
 
+#TODO: Voy por aqui
 # DEC
 opcode_table[0xc6] = [decZP_,   IMMEDIATE,           2,     5,      0]
 opcode_table[0xd6] = [decZPX_,  IMMEDIATE,           2,     6,      0]
