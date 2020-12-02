@@ -572,52 +572,22 @@ def cpyMem_(addr):
     return cpy_(MEM_READ(addr))
 
 # DEC
-def decZP_(val):
+def decMem_(addr):
     global Z, N
 
-    res  = (MEM_READ_ZEROPAGE(val) - 1) % 256
-    MEM_WRITE_ZEROPAGE(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
+    val = (MEM_READ(addr) - 1) & 0xff
+    MEM_WRITE(addr, val)
+    Z = val == 0
+    N = (val & 0x80) != 0
 
     return 0
-
-def decZPX_(val):
-    global Z, N
-
-    res  = (MEM_READ_ZEROPAGE_X(val) - 1) % 256
-    MEM_WRITE_ZEROPAGE_X(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
-
-    return 0
-
-def decABS_(val):
-    global Z, N
-
-    res  = (MEM_READ_ABSOLUTE(val) - 1) % 256
-    MEM_WRITE_ABSOLUTE(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
-
-    return 0
-
-def decABSX_(val):    
-    global Z, N
-
-    res  = (MEM_READ_ABSOLUTE_X(val) - 1) % 256
-    MEM_WRITE_ABSOLUTE_X(val, res)
-    Z = res == 0
-    N = (res & 0x80) != 0
-
-    return 0    
 
 # DEX
 def dex_(val):
     global X
     global Z, N
 
-    X = (X - 1) % 256
+    X = (X - 1) & 0xff
     Z = X == 0
     N = (X & 0x80) != 0
 
@@ -628,7 +598,7 @@ def dey_(val):
     global Y
     global Z, N
 
-    Y = (Y - 1) % 256 # =1 -> 0xff
+    Y = (Y - 1) & 0xff 
     Z = Y == 0
     N = (Y & 0x80) != 0
 
@@ -1267,19 +1237,19 @@ opcode_table[0xc0] = [cpy_,      IMMEDIATE,             2,     2,      0]
 opcode_table[0xc4] = [cpyMem_,   MEM_READ_ZEROPAGE,     2,     3,      0]
 opcode_table[0xcc] = [cpyMem_,   MEM_READ_ABSOLUTE,     3,     4,      0]
 
-#TODO: Voy por aqui
 # DEC
-opcode_table[0xc6] = [decZP_,   IMMEDIATE,           2,     5,      0]
-opcode_table[0xd6] = [decZPX_,  IMMEDIATE,           2,     6,      0]
-opcode_table[0xce] = [decABS_,  IMMEDIATE,           3,     6,      0]
-opcode_table[0xde] = [decABSX_, IMMEDIATE,           3,     7,      0]
+opcode_table[0xc6] = [decMem_,   MEM_READ_ZEROPAGE,     2,     5,      0]
+opcode_table[0xd6] = [decMem_,   MEM_READ_ZEROPAGE_X,   2,     6,      0]
+opcode_table[0xce] = [decMem_,   MEM_READ_ABSOLUTE,     3,     6,      0]
+opcode_table[0xde] = [decMem_,   MEM_READ_ABSOLUTE_X,   3,     7,      0]
 
 # DEX
-opcode_table[0xca] = [dex_, MEM_READ_ZEROPAGE,       1,     2,      0]
+opcode_table[0xca] = [dex_,      MEM_READ_ZEROPAGE,     1,     2,      0]
 
 # DEY
-opcode_table[0x88] = [dey_, MEM_READ_ZEROPAGE,       1,     2,      0]
+opcode_table[0x88] = [dey_,      MEM_READ_ZEROPAGE,     1,     2,      0]
 
+#TODO: Voy por aqui
 # EOR
 opcode_table[0x49] = [eor_, IMMEDIATE,               2,     2,      0]
 opcode_table[0x45] = [eor_, MEM_READ_ZEROPAGE,       2,     3,      0]
