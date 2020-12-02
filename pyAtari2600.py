@@ -799,105 +799,51 @@ def plp_(val):
 def rol_(val):
     global Z,N,C
 
-    res = memory[addr] * 2
-    if C: res |= 0x01
-    C = res > 255  # same as "(memory[addr] & 0x80) != 0"
-    res &= 0xff
-    Z = (res == 0)
-    N = (res & 0x80) != 0    
+    res = (A << 1) | C # Mixing integer and boolean, but it is OK (True -> 1)
+    A = res & 0xff
+    C = res > 0xff
+    Z = (A == 0)
+    N = (A & 0x80) != 0    
 
     return res 
 
-def rolAcc_(val):    
-    global A
+def rolMem_(addr):
+    global Z,N,C
 
-    A = rol_(A)
+    res = (MEM_READ(addr) << 1) | C
+    val = res & 0xff
+    MEM_WRITE(addr, val)
+    C = res > 0xff
+    Z = (val == 0)
+    N = (val & 0x80) != 0    
 
-    return 0
-
-def rolZP_(val):    
-    
-    old = MEM_READ_ZEROPAGE(val)
-    new = rol_(old)
-    MEM_WRITE_ZEROPAGE(val, new)
-
-    return 0
-
-def rolZPX_(val):    
-
-    old = MEM_READ_ZEROPAGE_X(val)
-    new = rol_(old)
-    MEM_WRITE_ZEROPAGE_X(val, new)
-
-    return 0
-
-def rolABS_(val):    
-
-    old = MEM_READ_ABSOLUTE(val)
-    new = rol_(old)
-    MEM_WRITE_ABSOLUTE(val, new)
-
-    return 0
-
-def rolABSX_(val):    
-
-    old = MEM_READ_ABSOLUTE_X(val)
-    new = rol_(old)
-    MEM_WRITE_ABSOLUTE_X(val, new) 
-
-    return 0
+    return res 
 
 # ROR
 def ror_(val):
     global Z,C,N
     
-    bit1_old = (val & 0x01) != 0
-    res = val/2
-    if C: res |= 0x80
-    Z = (res == 0)
+    bit0 = val & 0x01
+    A = (val >> 1) | (C << 7) # Mixing integer and boolean, but it is OK (True -> 1)
     N = C
-    C = bit1_old
+    C = (bit0 != 0)
+    Z = (A == 0)
     
     return res
 
-def rorAcc_(val):    
-    global A
-
-    A = ror_(A)
-
-    return 0
-
-def rorZP_(val):    
+def rorMem_(addr):
+    global Z,C,N
     
-    old = MEM_READ_ZEROPAGE(val)
-    new = ror_(old)
-    MEM_WRITE_ZEROPAGE(val, new)
+    val = MEM_READ(addr)
+    bit0 = val & 0x01
+    res = (val >> 1) | (C << 7)
+    MEM_WRITE(addr, res)
+    N = C
+    C = (bit0 != 0)
+    Z = (res == 0)
+    
+    return res
 
-    return 0
-
-def rorZPX_(val):    
-
-    old = MEM_READ_ZEROPAGE_X(val)
-    new = ror_(old)
-    MEM_WRITE_ZEROPAGE_X(val, new)
-
-    return 0
-
-def rorABS_(val):    
-
-    old = MEM_READ_ABSOLUTE(val)
-    new = ror_(old)
-    MEM_WRITE_ABSOLUTE(val, new)
-
-    return 0
-
-def rorABSX_(val):    
-
-    old = MEM_READ_ABSOLUTE_X(val)
-    new = ror_(old)
-    MEM_WRITE_ABSOLUTE_X(val, new)
-
-    return 0
 
 # RTI
 def rti_(unused):
@@ -1295,7 +1241,6 @@ opcode_table[0x68] = [pla_,      IMMEDIATE,               1,     4,      0]
 # PLP
 opcode_table[0x28] = [plp_,      IMMEDIATE,               1,     4,      0]
 
-#TODO: Voy por aqui
 # ROL
 opcode_table[0x2a] = [rolAcc_,   IMMEDIATE,               1,     2,      0]
 opcode_table[0x26] = [rolMem_,   MEM_READ_ZEROPAGE,       2,     5,      0]
@@ -1310,6 +1255,7 @@ opcode_table[0x76] = [rorMem_,   MEM_READ_ZEROPAGE_X,     2,     6,      0]
 opcode_table[0x6e] = [rorMem_,   MEM_READ_ABSOLUTE,       3,     6,      0]
 opcode_table[0x7e] = [rorMem_,   MEM_READ_ABSOLUTE_X,     3,     7,      0]
 
+#TODO: Voy por aqui
 # RTI                                                
 opcode_table[0x40] = [pla_, IMMEDIATE,               1,     6,      0]
 
