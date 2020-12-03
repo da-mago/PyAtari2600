@@ -1,3 +1,6 @@
+# No BCD implementation
+# Only NTSC
+
 import numpy as np
 import pygame
 
@@ -1471,14 +1474,16 @@ import time
 #f = open("Indy500.a26", "rb")
 #f = open("3_Bars_Background.bin", "rb")
 #with open("prueba.bin", "rb") as f:
-with open("kernel_13.bin", "rb") as f:
+with open("../kernel_13.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
 
 pygame.init()
-display = pygame.display.set_mode([160,192], flags = pygame.SCALED)
+display = pygame.display.set_mode([320,192], flags = pygame.SCALED)
+#surface = pygame.surface.Surface((160, 192))
+surface = pygame.Surface((160, 192))
 
 PC = 0x1000
 ss = 0
@@ -1508,6 +1513,7 @@ for i in range(1900*401):
     # Update num cycles
     num_cycles = num_cycles + (ncycles + extra_cycles) * 3
 
+
     # TIA: Register update
     if TIA_UPDATE:
         TIA_UPDATE = False
@@ -1536,10 +1542,9 @@ for i in range(1900*401):
             ss +=1
             ss = 0
             if ss%20 == 0:
-                pass
-                pygame.surfarray.blit_array(display, screen)
+                pygame.surfarray.blit_array(surface, screen)
+                display.blit(pygame.transform.scale(surface, (320,192)), (0, 0))
                 pygame.display.update()
-
 
 #
 # TIA
