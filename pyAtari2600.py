@@ -1481,8 +1481,8 @@ for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
 
 pygame.init()
-display = pygame.display.set_mode([320,192], flags = pygame.SCALED)
-#surface = pygame.surface.Surface((160, 192))
+# Scaling by is faster than using pygame.SCALED flag
+display = pygame.display.set_mode([320*3,192*3])
 surface = pygame.Surface((160, 192))
 
 PC = 0x1000
@@ -1541,10 +1541,10 @@ for i in range(1900*401):
             line = 0
             ss +=1
             ss = 0
-            if ss%20 == 0:
+            if ss%2 == 0:
                 pygame.surfarray.blit_array(surface, screen)
-                display.blit(pygame.transform.scale(surface, (320,192)), (0, 0))
-                pygame.display.update()
+                display.blit(pygame.transform.scale(surface, (320*3,192*3)), (0, 0))
+                pygame.display.flip()
 
 #
 # TIA
