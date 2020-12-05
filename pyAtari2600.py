@@ -143,7 +143,8 @@ def TIA_update():
         pass
 
     elif addr == RESP0:
-        P0_pos = clk_cycles - 68 # Assume one change max per line
+        # Single scalar, so assumng a single update during the line
+        P0_pos = clk_cycles - 68
 
     elif addr == RESP1:
         P1_pos = clk_cycles - 68
@@ -159,20 +160,15 @@ def TIA_update():
 
     elif addr == HMOVE:
         tmp = memory[HMP0] >> 4
-        if tmp >= 8: tmp = tmp - 16   # -8 ... +7
-        P0_pos += tmp
+        P0_pos += tmp if tmp < 8 else tmp -16   # -8 ... +7
         tmp = memory[HMP1] >> 4
-        if tmp >= 8: tmp = tmp - 16
-        P1_pos += tmp
+        P1_pos += tmp if tmp < 8 else tmp -16
         tmp = memory[HMM0] >> 4
-        if tmp >= 8: tmp = tmp - 16
-        M0_pos += tmp
+        M0_pos += tmp if tmp < 8 else tmp -16
         tmp = memory[HMM1] >> 4
-        if tmp >= 8: tmp = tmp - 16
-        M1_pos += tmp
+        M1_pos += tmp if tmp < 8 else tmp -16
         tmp = memory[HMBL] >> 4
-        if tmp >= 8: tmp = tmp - 16
-        BL_pos += tmp
+        BL_pos += tmp if tmp < 8 else tmp -16
 
     elif addr == HMCLR:
         memory[HMP0] = 0
@@ -210,7 +206,7 @@ def TIA_update():
             pf2_r = value
 
     elif addr == CTRLPF:
-        if clk_cycles < 144: # Before half-line
+        if clk_cycles < 148: # Before half-line
             pf_mirror = 1 if value & 0x01 else 0
 
     elif addr == COLUBK:
@@ -1528,12 +1524,14 @@ for i in range(1900*401):
         
         if line >= 40 and line < 232:
             draw_line()
-        colubk = [[0, memory[COLUBK] ]]
-        pf0_l = pf0_r = memory[PF0]
-        pf1_l = pf1_r = memory[PF1]
-        pf2_l = pf2_r = memory[PF2]
-        tmp   = memory[CTRLPF]
-        pf_mirror = 1 if tmp & 0x01 else 0
+
+        # Prepare internal vars for the next line
+        colubk    = [[0, memory[COLUBK]]]
+        pf0_l     = pf0_r = memory[PF0]
+        pf1_l     = pf1_r = memory[PF1]
+        pf2_l     = pf2_r = memory[PF2]
+        pf_mirror = 1 if memory[CTRLPF] & 0x01 else 0
+
         line += 1
         if line >= 262:
             t2 = time.time()
