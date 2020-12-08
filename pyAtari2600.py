@@ -4,6 +4,8 @@
 import numpy as np
 import pygame
 
+import time
+
 #
 # ATARI 2600 core
 #
@@ -16,7 +18,10 @@ memory = [0 for x in range(2**13)] # Memory map
 clk_cycles = 0                     # Atari clock cycles
 page_crossed = 0
 frame_cnt = 0
+total_cycles = 0
 line = 0
+wsync = 0
+rsync = 0
 screen = np.zeros((160, 192, 3), dtype=np.uint8)
 colubk = [[0,0]] # List of background colour changes during the line
 # Playfield (40 bits)
@@ -131,14 +136,24 @@ def TIA_update():
 
     # Trigger registers (ignore value)
     if addr == WSYNC:
-        global clk_cycles
-        clk_cycles = 228 # NTSC
+        #global clk_cycles
+        global wsync
+
+        #clk_cycles = 228 # NTSC
+        wsync = 1
+        print('WSYNC')
+
+    if addr == RSYNC:
+        global rsync
+
+        rsync = 1
+        print('RSYNC')
 
     elif addr == VSYNC:
         global  line
+        print 'VSYNC', value, clk_cycles, total_cycles, line
         if value == 0:
             line = 3
-        print 'VSYNC', clk_cycles, line
 
     elif addr == RSYNC:
         pass
@@ -268,13 +283,13 @@ def RELATIVE(addr):
         return (addr - 0x100)
 
 def MEM_READ_ZEROPAGE(addr):
-    return addr
+    return addr & 0x3F
 
 def MEM_READ_ZEROPAGE_X(addr):
-    return (addr + X) & 0xff
+    return (addr + X) & 0x3f
 
 def MEM_READ_ZEROPAGE_Y(addr):
-    return (addr + Y) & 0xff
+    return (addr + Y) & 0x3f
 
 def MEM_READ_ABSOLUTE(addr):
 
@@ -318,13 +333,13 @@ def MEM_READ_INDIRECT_Y(addr):
 #TODO: maybe delete this macros
 # WRITE
 def MEM_WRITE_ZEROPAGE(addr, val):
-    MEM_WRITE(addr, val)
+    MEM_WRITE(addr & 0x3f, val)
 
 def MEM_WRITE_ZEROPAGE_X(addr, val):
-    MEM_WRITE((addr +  X) & 0xff, val)
+    MEM_WRITE((addr +  X) & 0x3f, val)
 #
 def MEM_WRITE_ZEROPAGE_Y(addr, val):
-    MEM_WRITE((addr +  Y) & 0xff, val)
+    MEM_WRITE((addr +  Y) & 0x3f, val)
 
 def MEM_WRITE_ABSOLUTE(addr, val):
     MEM_WRITE(addr & MAX_MEM_ADDR, val)
@@ -1091,10 +1106,10 @@ opcode_table[0xc9] = [cmp_,      IMMEDIATE,             2,     2,      0]
 opcode_table[0xc5] = [cmpMem_,   MEM_READ_ZEROPAGE,     2,     3,      0]
 opcode_table[0xd5] = [cmpMem_,   MEM_READ_ZEROPAGE_X,   2,     4,      0]
 opcode_table[0xcd] = [cmpMem_,   MEM_READ_ABSOLUTE,     3,     4,      0]
-opcode_table[0xdd] = [cmpMem_,   MEM_READ_ABSOLUTE_X,   3,     4,      0]
-opcode_table[0xd9] = [cmpMem_,   MEM_READ_ABSOLUTE_Y,   3,     4,      0]
+opcode_table[0xdd] = [cmpMem_,   MEM_READ_ABSOLUTE_X,   3,     4,      1]
+opcode_table[0xd9] = [cmpMem_,   MEM_READ_ABSOLUTE_Y,   3,     4,      1]
 opcode_table[0xc1] = [cmpMem_,   MEM_READ_INDIRECT_X,   2,     6,      0]
-opcode_table[0xd1] = [cmpMem_,   MEM_READ_INDIRECT_Y,   2,     5,      0]
+opcode_table[0xd1] = [cmpMem_,   MEM_READ_INDIRECT_Y,   2,     5,      1]
 
 # CPX
 opcode_table[0xe0] = [cpx_,      IMMEDIATE,             2,     2,      0]
@@ -1527,23 +1542,33 @@ for i in range(19000*401):
     # Update PC
     PC = (PC + nbytes) & MAX_MEM_ADDR
 
-    #print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles
     # Execute opcode
     extra_cycles  = opFunc(addr)
     extra_cycles += add_page_crossed * page_crossed
-
-    # Update num cycles
-    clk_cycles = clk_cycles + (ncycles + extra_cycles) * 3
-
 
     # TIA: Register update
     if TIA_UPDATE:
         TIA_UPDATE = False
         TIA_update()
     
+    # Update num cycles
+    if wsync:
+        clk_cycles = 228
+        wsync = 0
+    else:
+        clk_cycles = clk_cycles + (ncycles + extra_cycles) * 3
+
+    if rsync:
+        clk_cycles = 225
+        rsync = 0
+
+    print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles, wsync
+
     # TIA: draw TV line
     if clk_cycles >= 228:
-        #print(clk_cycles)
+        total_cycles += 228
+        #if frame_cnt < 3:
+        #    print('CLK ', clk_cycles)
         clk_cycles %= 228
         #print clk_cycles % 228
         #clk_cycles = 0
@@ -1560,12 +1585,11 @@ for i in range(19000*401):
 
         line += 1
         #print('Line {}'.format(line))
-        if line >= 262 or line == 4:
+        #if line >= 262 or line == 4:
+        if line == 4:
             t2 = time.time()
-            print 1/(t2-t1), ' Hz', frame_cnt
+            print 1/(t2-t1), ' Hz', frame_cnt, line, total_cycles
             frame_cnt += 1
-            #if frame_cnt == 0:
-            #    break
             t1 = t2
             if line >= 262:
                 line = 0
@@ -1578,7 +1602,11 @@ for i in range(19000*401):
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
                 pygame.display.flip()
+            #if frame_cnt == 3:
+            #    break
+            time.sleep(1)
 
+time.sleep(2)
 #
 # TIA
 #
