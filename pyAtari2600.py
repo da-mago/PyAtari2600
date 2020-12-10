@@ -20,6 +20,7 @@ page_crossed = 0
 frame_cnt = 0
 total_cycles = 0
 line = 0
+vsync = 0
 wsync = 0
 rsync = 0
 screen = np.zeros((160, 192, 3), dtype=np.uint8)
@@ -33,6 +34,14 @@ P0_pos = P1_pos = M0_pos = M1_pos = BL_pos = 0
 TIA_UPDATE = False
 tia_addr  = 0
 tia_value = 0
+
+#RIOT (PIA 6532)
+RIOT_UPDATE = False
+riot_addr  = 0
+riot_value = 0
+tim_prescaler = 1024 # default value
+tim_cnt       = 15   # default value
+
 
 MAX_MEM_ADDR = 0x1fff # 8KB-1 (13-bits)
 STACK_ADDR   = 0x100
@@ -126,6 +135,21 @@ INPT4  = 0x0C #  x000 0000   Read Input (Trigger) 0
 INPT5  = 0x0D #  x000 0000   Read Input (Trigger) 1
 
 
+def RIOT_update():
+    global memory
+    
+    addr  = riot_addr
+    value = riot_value
+
+    # Trigger registers (ignore value)
+    if addr == 0x296:
+        memory[0x284] = value
+        tim_prescaler = 64
+        tim_cnt = 1
+        print('TIMER 64', value)
+
+    # elif ...
+
 def TIA_update():
     global memory
     global ncycles
@@ -141,7 +165,7 @@ def TIA_update():
 
         #clk_cycles = 228 # NTSC
         wsync = 1
-        print('WSYNC')
+        print('WSYNC', line, hex(PC))
 
     if addr == RSYNC:
         global rsync
@@ -151,8 +175,11 @@ def TIA_update():
 
     elif addr == VSYNC:
         global  line
+        global  vsync
         print 'VSYNC', value, clk_cycles, total_cycles, line
-        if value == 0:
+        if value == 2:
+            vsync = 1
+        if vsync == 1 and value == 0:
             line = 3
 
     elif addr == RSYNC:
@@ -260,6 +287,16 @@ def MEM_WRITE(addr, value):
         TIA_UPDATE = True
         tia_addr  = addr
         tia_value = value
+
+        if addr > 0x3f:
+            print('ADDR {}'.format(hex(addr)))
+
+    if addr > 0x280:
+        global RIOT_UPDATE, riot_addr, riot_value
+        RIOT_UPDATE = True
+        riot_addr  = addr
+        riot_value = value
+        print('ADDR {}'.format((hex(addr))))
 
             
 def MEM_READ(addr):
@@ -1550,7 +1587,16 @@ for i in range(19000*401):
     if TIA_UPDATE:
         TIA_UPDATE = False
         TIA_update()
+
+    # RIOT
+    if RIOT_UPDATE:
+        RIOT_UPDATE = False
+        RIOT_update()
     
+    if (ncycles + extra_cycles) > tim_cnt:
+        memory[0x284] = (memory[0x284] - 1) & 0xff
+    tim_cnt = (tim_cnt - (ncycles + extra_cycles) ) % tim_prescaler
+
     # Update num cycles
     if wsync:
         clk_cycles = 228
@@ -1562,7 +1608,7 @@ for i in range(19000*401):
         clk_cycles = 225
         rsync = 0
 
-    print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles, wsync
+    #print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles, wsync
 
     # TIA: draw TV line
     if clk_cycles >= 228:
@@ -1586,7 +1632,11 @@ for i in range(19000*401):
         line += 1
         #print('Line {}'.format(line))
         #if line >= 262 or line == 4:
-        if line == 4:
+        #if line == 4:
+        if vsync == 1:
+            vsync = 0
+
+
             t2 = time.time()
             print 1/(t2-t1), ' Hz', frame_cnt, line, total_cycles
             frame_cnt += 1
@@ -1602,8 +1652,8 @@ for i in range(19000*401):
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
                 pygame.display.flip()
-            #if frame_cnt == 3:
-            #    break
+            if frame_cnt == 2:
+                break
             time.sleep(1)
 
 time.sleep(2)
