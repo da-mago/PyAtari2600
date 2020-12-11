@@ -5,6 +5,7 @@ import numpy as np
 import pygame
 
 import time
+import sys
 
 #
 # ATARI 2600 core
@@ -45,6 +46,7 @@ tim_cnt       = 15   # default value
 
 MAX_MEM_ADDR = 0x1fff # 8KB-1 (13-bits)
 STACK_ADDR   = 0x100
+
 
 # NTSC
 NTSC_colorMap = [0x000000, 0x404040, 0x6C6C6C, 0x909090, 0xB0B0B0, 0xC8C8C8, 0xDCDCDC, 0xECECEC, 
@@ -137,6 +139,7 @@ INPT5  = 0x0D #  x000 0000   Read Input (Trigger) 1
 
 def RIOT_update():
     global memory
+    global tim_cnt,tim_prescaler
     
     addr  = riot_addr
     value = riot_value
@@ -179,8 +182,9 @@ def TIA_update():
         print 'VSYNC', value, clk_cycles, total_cycles, line
         if value == 2:
             vsync = 1
-        if vsync == 1 and value == 0:
-            line = 3
+        else: # value == 0
+            if vsync == 1:
+                vsync = 2
 
     elif addr == RSYNC:
         pass
@@ -281,6 +285,11 @@ def MEM_WRITE(addr, value):
     global memory
     memory[addr] = value
     
+    if addr >= 0x40 and addr < 0x80:
+        print('ZERO PAGE ', hex(addr))
+        addr -= 0x40
+        #sys.exit()
+
     # TIA register (0x00 - 0x80)
     if addr < 0x80:
         global TIA_UPDATE, tia_addr, tia_value
@@ -289,17 +298,25 @@ def MEM_WRITE(addr, value):
         tia_value = value
 
         if addr > 0x3f:
-            print('ADDR {}'.format(hex(addr)))
+            print('W_ADDR {}'.format(hex(addr)))
 
     if addr > 0x280:
         global RIOT_UPDATE, riot_addr, riot_value
         RIOT_UPDATE = True
         riot_addr  = addr
         riot_value = value
-        print('ADDR {}'.format((hex(addr))))
+        print('W_ADDR {}'.format(hex(addr)), value)
 
             
 def MEM_READ(addr):
+
+    if addr >= 0x40 and addr < 0x80:
+        print('ZERO PAGE ', addr)
+        addr -= 0x40
+        sys.exit()
+
+    if addr > 0x280 and addr < 0x300:
+        print("R_ADDR {}".format(hex(addr)), hex(PC), tim_prescaler,  tim_cnt, memory[0x284])
     return memory[addr]
 
 
@@ -320,13 +337,13 @@ def RELATIVE(addr):
         return (addr - 0x100)
 
 def MEM_READ_ZEROPAGE(addr):
-    return addr & 0x3F
+    return addr & 0xff
 
 def MEM_READ_ZEROPAGE_X(addr):
-    return (addr + X) & 0x3f
+    return (addr + X) & 0xff
 
 def MEM_READ_ZEROPAGE_Y(addr):
-    return (addr + Y) & 0x3f
+    return (addr + Y) & 0xff
 
 def MEM_READ_ABSOLUTE(addr):
 
@@ -370,13 +387,13 @@ def MEM_READ_INDIRECT_Y(addr):
 #TODO: maybe delete this macros
 # WRITE
 def MEM_WRITE_ZEROPAGE(addr, val):
-    MEM_WRITE(addr & 0x3f, val)
+    MEM_WRITE(addr & 0xff, val)
 
 def MEM_WRITE_ZEROPAGE_X(addr, val):
-    MEM_WRITE((addr +  X) & 0x3f, val)
+    MEM_WRITE((addr +  X) & 0xff, val)
 #
 def MEM_WRITE_ZEROPAGE_Y(addr, val):
-    MEM_WRITE((addr +  Y) & 0x3f, val)
+    MEM_WRITE((addr +  Y) & 0xff, val)
 
 def MEM_WRITE_ABSOLUTE(addr, val):
     MEM_WRITE(addr & MAX_MEM_ADDR, val)
@@ -788,7 +805,7 @@ def ldyMem_(addr):
 # LSR
 def lsr_(unused):
     global A
-    global Z, N
+    global Z, N, C
     
     C = (A & 0x01) != 0
     A = A >> 1
@@ -798,7 +815,7 @@ def lsr_(unused):
     return 0
 
 def lsrMem_(addr):
-    global Z, N
+    global Z, N, C
     
     val = MEM_READ(addr)
     C = (val & 0x01) != 0
@@ -1526,10 +1543,19 @@ def draw_line():
     P0_color = colorMap[memory[COLUP0]>>1] # assuming no change in color during the first half-line
     P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
     for i in range(8):
-        if memory[GRP0] & (0x80>>i):
-            screen[P0_pos + i, line - 40] = P0_color # Assuming one pixel size
-        if memory[GRP1] & (0x80>>i):
-            screen[P1_pos + i, line - 40] = P1_color # Assuming one pixel size
+        if memory[REFP0] & 0x08:
+            if memory[GRP0] & (0x01<<i):
+                screen[P0_pos + i, line - 40] = P1_color # Assuming one pixel size
+        else:
+            if memory[GRP0] & (0x80>>i):
+                screen[P0_pos + i, line - 40] = P0_color # Assuming one pixel size
+        if memory[REFP1] & 0x08:
+            if memory[GRP1] & (0x01<<i):
+                screen[P1_pos + i, line - 40] = P1_color # Assuming one pixel size
+        else:
+            if memory[GRP1] & (0x80>>i):
+                screen[P1_pos + i, line - 40] = P1_color # Assuming one pixel size
+            
         #screen[GP1_pos + i, line - 40] = GP1_color
         #screen[MP1_pos + i, line - 40] = GP1_color
 
@@ -1561,6 +1587,11 @@ t1 = time.time()
 for i in range(19000*401):
     page_crossed = 0
     
+
+    #trampas
+    memory[0x282] = 0x2f
+
+
     # Get the next opcode
     #print("PC {}".format(hex(PC)))
     opcode = memory[PC]
@@ -1588,14 +1619,20 @@ for i in range(19000*401):
         TIA_UPDATE = False
         TIA_update()
 
+
     # RIOT
     if RIOT_UPDATE:
         RIOT_UPDATE = False
         RIOT_update()
     
-    if (ncycles + extra_cycles) > tim_cnt:
-        memory[0x284] = (memory[0x284] - 1) & 0xff
-    tim_cnt = (tim_cnt - (ncycles + extra_cycles) ) % tim_prescaler
+    if wsync:
+        discount = 76 - clk_cycles/3
+    else:
+        discount = ncycles + extra_cycles
+    if discount > tim_cnt:
+        memory[0x284] = (memory[0x284] - (discount/76 + 1)) & 0xff
+    tim_cnt = (tim_cnt - discount) % tim_prescaler
+
 
     # Update num cycles
     if wsync:
@@ -1608,14 +1645,16 @@ for i in range(19000*401):
         clk_cycles = 225
         rsync = 0
 
-    #print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles, wsync
+    #print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles, wsync, A, C
+    #print(clk_cycles/3)
 
     # TIA: draw TV line
     if clk_cycles >= 228:
         total_cycles += 228
+        clk_cycles %= 228
+        print("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
         #if frame_cnt < 3:
         #    print('CLK ', clk_cycles)
-        clk_cycles %= 228
         #print clk_cycles % 228
         #clk_cycles = 0
         
@@ -1633,11 +1672,13 @@ for i in range(19000*401):
         #print('Line {}'.format(line))
         #if line >= 262 or line == 4:
         #if line == 4:
-        if vsync == 1:
+        if vsync == 2:
             vsync = 0
+            line = 3
 
 
             t2 = time.time()
+            print("\nNEW FRAME: line {}".format(line))
             print 1/(t2-t1), ' Hz', frame_cnt, line, total_cycles
             frame_cnt += 1
             t1 = t2
@@ -1652,9 +1693,9 @@ for i in range(19000*401):
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
                 pygame.display.flip()
-            if frame_cnt == 2:
+            if frame_cnt == 6:
                 break
-            time.sleep(1)
+            #time.sleep(1)
 
 time.sleep(2)
 #
