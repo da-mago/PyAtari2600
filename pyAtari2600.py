@@ -1,11 +1,47 @@
 # No BCD implementation
 # Only NTSC
+# REMIND!!! TIA 0x00-0x0D registers RD and WR are NOT the same!!! same address, but different registers
+# Add Remapping (ie: TIA 0x40 is 0x00). Advice: 64byte blocks
+# Set default value for input registers
 
 import numpy as np
 import pygame
 
 import time
 import sys
+import code
+
+
+def show_TIA():
+    print("\nTIA 0x00-0x2C")
+    print("-----------------------------------------------")
+    for i in range(0,0x2C, 0x10):
+        print(("{:02X} "*0x10).format(*memory[i:i+0x10]))
+
+def show_RAM():
+    print("\nRAM 0x80-0xff")
+    print("-----------------------------------------------")
+    for i in range(0x80,0x100, 0x10):
+        print(("{:02X} "*0x10).format(*memory[i:i+0x10]))
+
+def show_Registers():
+    print("\nCPU registers")
+    print("-----------------------------------------------")
+    print("A:0x{:02X}, X:0x{:02X}, Y:0x{:02X}". format(A,X,Y))
+    print("N:{}, V:{}, Z:{}, C:{}". format(N,V,Z,C))
+    print("PC:0x{:04X}, SP:0x{:02X}".format(PC, SP))
+
+def show_cycles():
+    print("\nCycles")
+    print("-----------------------------------------------")
+    print("CPU cycles: {}".format(clk_cycles/3))
+    print("CLK cycles: {}".format(clk_cycles))
+
+def show_All():
+    show_RAM()
+    show_TIA()
+    show_Registers()
+    show_cycles()
 
 #
 # ATARI 2600 core
@@ -14,7 +50,7 @@ import sys
 A = X = Y = 0                      # Registers
 PC = 0                             # Program counter
 SP = 0                             # Stack pointer
-N = V = B = D = I = Z = C = 0      # Status flags
+N = V = B = D = I = Z = C = False  # Status flags
 memory = [0 for x in range(2**13)] # Memory map
 clk_cycles = 0                     # Atari clock cycles
 page_crossed = 0
@@ -45,7 +81,6 @@ tim_cnt       = 15   # default value
 
 
 MAX_MEM_ADDR = 0x1fff # 8KB-1 (13-bits)
-STACK_ADDR   = 0x100
 
 
 # NTSC
@@ -145,11 +180,26 @@ def RIOT_update():
     value = riot_value
 
     # Trigger registers (ignore value)
-    if addr == 0x296:
+    if addr == 0x294:
+        memory[0x284] = value
+        tim_prescaler =1 
+        tim_cnt = 1
+        print('TIMER 1', value, clk_cycles/3)
+    elif addr == 0x295:
+        memory[0x284] = value
+        tim_prescaler =8 
+        tim_cnt = 1
+        print('TIMER 8', value, clk_cycles/3)
+    elif addr == 0x296:
         memory[0x284] = value
         tim_prescaler = 64
         tim_cnt = 1
-        print('TIMER 64', value)
+        print('TIMER 64', value, clk_cycles/3)
+    elif addr == 0x297:
+        memory[0x284] = value
+        tim_prescaler =1024 
+        tim_cnt = 1
+        print('TIMER 1024', value, clk_cycles/3)
 
     # elif ...
 
@@ -180,7 +230,7 @@ def TIA_update():
         global  line
         global  vsync
         print 'VSYNC', value, clk_cycles, total_cycles, line
-        if value == 2:
+        if value != 0:
             vsync = 1
         else: # value == 0
             if vsync == 1:
@@ -191,12 +241,12 @@ def TIA_update():
 
     elif addr == RESP0:
         # Single scalar, so assumng a single update during the line
-        P0_pos = clk_cycles - 68
-        #print('RESP0 ', P0_pos)
+        P0_pos = clk_cycles - 68 + 5 # +5 Not sure why.. taken from Stella emulator (experimental using Stella debugger)
+        print('RESP0 ', P0_pos, line, frame_cnt)
 
     elif addr == RESP1:
-        P1_pos = clk_cycles - 68
-        #print('RESP1', P1_pos)
+        P1_pos = clk_cycles - 68 + 5
+        print('RESP1', P1_pos)
 
     elif addr == RESM0:
         M0_pos = clk_cycles - 68
@@ -208,6 +258,7 @@ def TIA_update():
         BL_pos = clk_cycles - 68
 
     elif addr == HMOVE:
+        pass
         tmp = memory[HMP0] >> 4
         P0_pos -= tmp if tmp < 8 else (tmp - 16)   # -8 ... +7
         tmp = memory[HMP1] >> 4
@@ -278,6 +329,14 @@ def TIA_update():
     elif addr == COLUP1:
         pass
         #print('COLUP1', value, line)
+
+    elif addr == GRP0:
+        pass
+        #print('GRP0', value, line, frame_cnt)
+
+    elif addr == GRP1:
+        pass
+        print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
 
 
 # Memory bus operation
@@ -564,12 +623,13 @@ def brk_(unused):
     B = 1
     # push PC and SP to stack
     rti_PC = PC + 1
-    memory[STACK_ADDR + SP]     = rti_PC >> 8
-    memory[STACK_ADDR + SP - 1] = rti_PC & 0xff
-    memory[STACK_ADDR + SP - 2] = PSW_GET()
+    memory[SP]     = rti_PC >> 8
+    memory[SP - 1] = rti_PC & 0xff
+    memory[SP - 2] = PSW_GET()
     SP -= 3
     # PC = interrupt vector
-    PC = MEM_READ_ABSOLUTE(0xfffe) | MEM_READ_ABSOLUTE(0xffff)<<8 
+    PC = (MEM_READ(MEM_READ_ABSOLUTE(0xfffe)) | MEM_READ(MEM_READ_ABSOLUTE(0xffff))<<8) & 0x1fff
+    print(hex(PC))
 
     return 0
 
@@ -752,8 +812,8 @@ def jsr_(val):
     #print(hex(val & MAX_MEM_ADDR))
     # push PC-1 on to the stack
     PC -= 1
-    memory[STACK_ADDR + SP]     = PC >> 8
-    memory[STACK_ADDR + SP - 1] = PC & 0xff
+    memory[SP]     = PC >> 8
+    memory[SP - 1] = PC & 0xff
     SP -= 2
     # update PC
     PC = val
@@ -846,7 +906,7 @@ def pha_(val):
     global SP
     global memory
 
-    memory[STACK_ADDR + SP] = A
+    memory[SP] = A
     SP = SP - 1
 
     return 0    
@@ -855,7 +915,7 @@ def php_(val):
     global SP
     global memory
 
-    memory[STACK_ADDR + SP] = PSW_GET()
+    memory[SP] = PSW_GET()
     SP = SP - 1
 
     return 0    
@@ -865,7 +925,7 @@ def pla_(val):
     global Z, N
 
     SP = SP + 1
-    A = memory[STACK_ADDR + SP]
+    A = memory[SP]
     Z = A == 0 
     N = (A & 0x80 != 0) 
 
@@ -876,7 +936,7 @@ def plp_(val):
     global C,Z,I,D,B,V,N
 
     SP = SP + 1
-    tmp = memory[STACK_ADDR + SP]
+    tmp = memory[SP]
     PSW_SET(tmp)
 
     return 0
@@ -938,8 +998,8 @@ def rti_(unused):
     global PC, SP
     global C,Z,I,D,B,V,N
 
-    PSW_SET(memory[STACK_ADDR + SP + 1])
-    PC = memory[STACK_ADDR + SP + 2] | (memory[STACK_ADDR + SP + 3] << 8)
+    PSW_SET(memory[SP + 1])
+    PC = memory[SP + 2] | (memory[SP + 3] << 8)
     SP += 3
 
     return 0
@@ -948,7 +1008,7 @@ def rti_(unused):
 def rts_(unused):
     global PC, SP
 
-    PC = (memory[STACK_ADDR + SP + 1] | (memory[STACK_ADDR + SP + 2] << 8)) + 1
+    PC = (memory[SP + 1] | (memory[SP + 2] << 8)) + 1
     SP += 2
 
     return 0
@@ -1569,11 +1629,12 @@ import time
 #f = open("3_Bars_Background.bin", "rb")
 #with open("prueba.bin", "rb") as f:
 #with open("../ROMS/pace Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
-with open("../prueba.bin", "rb") as f:
+with open("../prueba2.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
+    memory[0x1800 + i] = ord(byte)
 
 pygame.init()
 # Scaling by is faster than using pygame.SCALED flag
@@ -1614,17 +1675,6 @@ for i in range(19000*401):
     extra_cycles  = opFunc(addr)
     extra_cycles += add_page_crossed * page_crossed
 
-    # TIA: Register update
-    if TIA_UPDATE:
-        TIA_UPDATE = False
-        TIA_update()
-
-
-    # RIOT
-    if RIOT_UPDATE:
-        RIOT_UPDATE = False
-        RIOT_update()
-    
     if wsync:
         discount = 76 - clk_cycles/3
     else:
@@ -1635,24 +1685,36 @@ for i in range(19000*401):
 
 
     # Update num cycles
+    clk_cycles = clk_cycles + (ncycles + extra_cycles) * 3
+
+
+    # TIA: Register update
+    if TIA_UPDATE:
+        TIA_UPDATE = False
+        TIA_update()
+
+    # RIOT
+    if RIOT_UPDATE:
+        RIOT_UPDATE = False
+        RIOT_update()
+    
     if wsync:
         clk_cycles = 228
         wsync = 0
-    else:
-        clk_cycles = clk_cycles + (ncycles + extra_cycles) * 3
 
     if rsync:
         clk_cycles = 225
         rsync = 0
 
-    #print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles, wsync, A, C
-    #print(clk_cycles/3)
+    if line != 60:
+        print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles,  memory[0xb3], A
+    print(clk_cycles/3, wsync)
 
     # TIA: draw TV line
     if clk_cycles >= 228:
         total_cycles += 228
         clk_cycles %= 228
-        print("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
+        print("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3), memory[0x284])
         #if frame_cnt < 3:
         #    print('CLK ', clk_cycles)
         #print clk_cycles % 228
@@ -1678,12 +1740,12 @@ for i in range(19000*401):
 
 
             t2 = time.time()
-            print("\nNEW FRAME: line {}".format(line))
+            print("\nFRAME {}: line {}".format(frame_cnt, line))
             print 1/(t2-t1), ' Hz', frame_cnt, line, total_cycles
             frame_cnt += 1
             t1 = t2
-            if line >= 262:
-                line = 0
+            #if line >= 262:
+            #    line = 0
             ss +=1
             ss = 0
             if ss%2 == 0:
@@ -1693,9 +1755,11 @@ for i in range(19000*401):
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
                 pygame.display.flip()
-            if frame_cnt == 6:
+            if frame_cnt == 16:
                 break
             #time.sleep(1)
+        if (line % 10) == 0:
+            code.interact(local=locals())
 
 time.sleep(2)
 #
@@ -1759,5 +1823,4 @@ time.sleep(2)
 #
 
 
-
-
+show_All()
