@@ -342,6 +342,9 @@ def TIA_update():
 # Memory bus operation
 def MEM_WRITE(addr, value):
     global memory
+
+    addr &= MAX_MEM_ADDR
+
     memory[addr] = value
     
     if addr >= 0x40 and addr < 0x80:
@@ -368,6 +371,8 @@ def MEM_WRITE(addr, value):
 
             
 def MEM_READ(addr):
+
+    addr &= MAX_MEM_ADDR
 
     if addr >= 0x40 and addr < 0x80:
         print('ZERO PAGE ', addr)
@@ -406,7 +411,7 @@ def MEM_READ_ZEROPAGE_Y(addr):
 
 def MEM_READ_ABSOLUTE(addr):
 
-    return addr & MAX_MEM_ADDR
+    return addr
 
 # Not clear the 'page_crossed' extra cycle: https://wiki.nesdev.com/w/index.php/CPU_addressing_modes
 def MEM_READ_ABSOLUTE_X(addr):
@@ -414,26 +419,26 @@ def MEM_READ_ABSOLUTE_X(addr):
 
     addr = addr + X
     if (addr & 0xff) < X: page_crossed = 1
-    return addr & MAX_MEM_ADDR
+    return addr
 
 def MEM_READ_ABSOLUTE_Y(addr):
     global page_crossed
 
     addr = addr + Y
     if (addr & 0xff) < Y: page_crossed = 1
-    return addr & MAX_MEM_ADDR
+    return addr
 
 def MEM_READ_INDIRECT(addrL):
     # HW Bug in original 6502 processor (instead of addrH = addrL+1)
     addrH = (addrL & 0xff00) | ((addrL + 1) & 0x00ff)
     addr = MEM_READ(addrL) | (MEM_READ(addrH)<<8)
 
-    return addr & MAX_MEM_ADDR
+    return addr
 
 def MEM_READ_INDIRECT_X(addr):
     addr = (addr + X) & 0xff
     addr = MEM_READ(addr) | (MEM_READ((addr + 1) & 0xff) << 8)
-    return addr & MAX_MEM_ADDR
+    return addr
 
 def MEM_READ_INDIRECT_Y(addr):
     global page_crossed
@@ -441,7 +446,7 @@ def MEM_READ_INDIRECT_Y(addr):
     addr = MEM_READ(addr) | (MEM_READ((addr + 1) & 0xff) << 8)
     addr = addr + Y
     if (addr & 0xff) < Y: page_crossed = 1
-    return addr & MAX_MEM_ADDR
+    return addr
 
 #TODO: maybe delete this macros
 # WRITE
@@ -455,13 +460,13 @@ def MEM_WRITE_ZEROPAGE_Y(addr, val):
     MEM_WRITE((addr +  Y) & 0xff, val)
 
 def MEM_WRITE_ABSOLUTE(addr, val):
-    MEM_WRITE(addr & MAX_MEM_ADDR, val)
+    MEM_WRITE(addr, val)
 
 def MEM_WRITE_ABSOLUTE_X(addr, val):
-    MEM_WRITE((addr + X) & MAX_MEM_ADDR, val)    
+    MEM_WRITE((addr + X), val)    
 
 def MEM_WRITE_ABSOLUTE_Y(addr, val):
-    MEM_WRITE((addr + Y) & MAX_MEM_ADDR, val)    
+    MEM_WRITE((addr + Y), val)    
     
 #def MEM_WRITE_MEM_READ_INDIRECT(addr, val):
 #    addr = memory[addr] | memory[addr + 1]<<8
@@ -470,12 +475,12 @@ def MEM_WRITE_ABSOLUTE_Y(addr, val):
 def MEM_WRITE_INDIRECT_X(addr, val):
     addr = (addr+ X) & 0xff
     addr = MEM_READ(addr) | (MEM_READ(addr+1)<<8)
-    MEM_WRITE(addr & MAX_MEM_ADDR, val)
+    MEM_WRITE(addr, val)
 
 def MEM_WRITE_INDIRECT_Y(addr, val):
     addr = MEM_READ(addr) | (MEM_READ(addr+1)<<8)
     addr = addr + Y
-    MEM_WRITE(addr & MAX_MEM_ADDR, val)
+    MEM_WRITE(addr, val)
 
 # Flags status byte
 def PSW_GET():
@@ -629,7 +634,7 @@ def brk_(unused):
     memory[SP - 2] = PSW_GET()
     SP -= 3
     # PC = interrupt vector
-    PC = (MEM_READ(MEM_READ_ABSOLUTE(0xfffe)) | MEM_READ(MEM_READ_ABSOLUTE(0xffff))<<8) & 0x1fff
+    PC = (MEM_READ(MEM_READ_ABSOLUTE(0xfffe)) | MEM_READ(MEM_READ_ABSOLUTE(0xffff))<<8)
     print(hex(PC))
 
     return 0
@@ -802,7 +807,7 @@ def iny_(val):
 def jmp_(val):    
     global PC
     
-    PC = val & MAX_MEM_ADDR
+    PC = val
 
     return 0
     
@@ -1642,7 +1647,7 @@ pygame.init()
 display = pygame.display.set_mode([320*3,192*3])
 surface = pygame.Surface((160, 192))
 
-PC = 0x1000
+PC = 0xF000
 ss = 0
 t1 = time.time()
 #for i in range(1100):
@@ -1658,8 +1663,8 @@ for i in range(19000*401):
 
 
     # Get the next opcode
-    #print("PC {}".format(hex(PC)))
-    opcode = memory[PC]
+    print("PC {}".format(hex(PC)))
+    opcode = MEM_READ(PC)
     #print hex(opcode)
     opFunc, opMode, nbytes, ncycles, add_page_crossed = opcode_table[opcode]
     
@@ -1668,12 +1673,12 @@ for i in range(19000*401):
         break
 
     # Get the operand (if appropriate)
-    if nbytes == 2  : addr = opMode(memory[PC+1])
-    elif nbytes == 3: addr = opMode(memory[PC+1] + (memory[PC+2]<<8))
+    if nbytes == 2  : addr = opMode(MEM_READ(PC+1))
+    elif nbytes == 3: addr = opMode(MEM_READ(PC+1) + (MEM_READ(PC+2)<<8))
     else            : addr = 0
 
     # Update PC
-    PC = (PC + nbytes) & MAX_MEM_ADDR
+    PC += nbytes
 
     # Execute opcode
     extra_cycles  = opFunc(addr)
