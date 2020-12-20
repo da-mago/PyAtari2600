@@ -381,6 +381,10 @@ def MEM_READ(addr):
 
     if addr > 0x280 and addr < 0x300:
         print("R_ADDR {}".format(hex(addr)), hex(PC), tim_prescaler,  tim_cnt, memory[0x284])
+
+    if addr < 0x0E:
+        print("USED TIA {}".format(addr))
+
     return memory[addr]
 
 
@@ -1635,7 +1639,7 @@ import time
 #f = open("3_Bars_Background.bin", "rb")
 #with open("prueba.bin", "rb") as f:
 #with open("../ROMS/pace Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
-with open("../prueba2.bin", "rb") as f:
+with open("../prueba.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
@@ -1660,6 +1664,12 @@ for i in range(19000*401):
     memory[0x281] = 0x00
     memory[0x282] = 0x3f
     memory[0x283] = 0x00
+    memory[0x38] = 0x80
+    memory[0x39] = 0x80
+    memory[0x3a] = 0x80
+    memory[0x3b] = 0x80
+    memory[0x3c] = 0x80
+    memory[0x3d] = 0x80
 
 
     # Get the next opcode
@@ -1751,6 +1761,7 @@ for i in range(19000*401):
             t2 = time.time()
             print("\nFRAME {}: line {}".format(frame_cnt, line))
             print 1/(t2-t1), ' Hz', frame_cnt, line, total_cycles
+            #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
             #if line >= 262:
