@@ -426,19 +426,19 @@ def MEM_READ_ABSOLUTE_Y(addr):
 def MEM_READ_INDIRECT(addrL):
     # HW Bug in original 6502 processor (instead of addrH = addrL+1)
     addrH = (addrL & 0xff00) | ((addrL + 1) & 0x00ff)
-    addr = memory[addrL] | (memory[addrH]<<8)
+    addr = MEM_READ(addrL) | (MEM_READ(addrH)<<8)
 
     return addr & MAX_MEM_ADDR
 
 def MEM_READ_INDIRECT_X(addr):
     addr = (addr + X) & 0xff
-    addr = memory[addr] | (memory[(addr + 1) & 0xff] << 8)
+    addr = MEM_READ(addr) | (MEM_READ((addr + 1) & 0xff) << 8)
     return addr & MAX_MEM_ADDR
 
 def MEM_READ_INDIRECT_Y(addr):
     global page_crossed
     
-    addr = memory[addr] | (memory[(addr + 1) & 0xff] << 8)
+    addr = MEM_READ(addr) | (MEM_READ((addr + 1) & 0xff) << 8)
     addr = addr + Y
     if (addr & 0xff) < Y: page_crossed = 1
     return addr & MAX_MEM_ADDR
@@ -469,11 +469,11 @@ def MEM_WRITE_ABSOLUTE_Y(addr, val):
     
 def MEM_WRITE_INDIRECT_X(addr, val):
     addr = (addr+ X) & 0xff
-    addr = memory[addr] | (memory[addr+1]<<8)
+    addr = MEM_READ(addr) | (MEM_READ(addr+1)<<8)
     MEM_WRITE(addr & MAX_MEM_ADDR, val)
 
 def MEM_WRITE_INDIRECT_Y(addr, val):
-    addr = memory[addr] | (memory[addr+1]<<8)
+    addr = MEM_READ(addr) | (MEM_READ(addr+1)<<8)
     addr = addr + Y
     MEM_WRITE(addr & MAX_MEM_ADDR, val)
 
@@ -617,6 +617,7 @@ def bpl_(unused):
 
 # BRK
 def brk_(unused):
+    global memory
     global PC, SP
     global B
 
@@ -1650,7 +1651,10 @@ for i in range(19000*401):
     
 
     #trampas
-    memory[0x282] = 0x2f
+    memory[0x280] = 0xff
+    memory[0x281] = 0x00
+    memory[0x282] = 0x3f
+    memory[0x283] = 0x00
 
 
     # Get the next opcode
@@ -1758,8 +1762,8 @@ for i in range(19000*401):
             if frame_cnt == 16:
                 break
             #time.sleep(1)
-        if (line % 10) == 0:
-            code.interact(local=locals())
+        #if (line % 10) == 0:
+        #    code.interact(local=locals())
 
 time.sleep(2)
 #
