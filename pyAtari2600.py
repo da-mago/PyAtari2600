@@ -230,7 +230,7 @@ def TIA_update():
         print_debug('RSYNC')
 
     elif addr == VSYNC:
-        global  line
+        #global  line
         global  vsync
         print_debug("VSYNC val:{}, clk_cycles:{}, total_cycles:{}, line:{}".format(value, clk_cycles, total_cycles, line))
         if value != 0:
@@ -348,7 +348,8 @@ def MEM_WRITE(addr, value):
 
     addr &= MAX_MEM_ADDR
 
-    memory[addr] = value
+    if addr != 0x282: # Port B is hardwired as input. Ignore write operations on it
+        memory[addr] = value
     
     if addr >= 0x40 and addr < 0x80:
         print_debug("ZERO PAGE 0x{:02X}".format(addr))
@@ -370,7 +371,7 @@ def MEM_WRITE(addr, value):
         RIOT_UPDATE = True
         riot_addr  = addr
         riot_value = value
-        print_debug('W_ADDR 0x{:4X}, val:{}'.format(addr, value))
+        print('W_ADDR 0x{:4X}, val:{}'.format(addr, value))
 
             
 def MEM_READ(addr):
@@ -1647,7 +1648,7 @@ with open("../prueba.bin", "rb") as f:
 
 for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
-    #memory[0x1800 + i] = ord(byte)
+    memory[0x1800 + i] = ord(byte)
 
 pygame.init()
 # Scaling by is faster than using pygame.SCALED flag
@@ -1657,7 +1658,7 @@ surface = pygame.Surface((160, 192))
 # Init input registers
 memory[0x280] = 0xff
 memory[0x281] = 0x00
-memory[0x282] = 0x3f
+memory[0x282] = 0x2f
 memory[0x283] = 0x00 # Actuallty hardwired as input
 memory[0x38]  = 0x80
 memory[0x39]  = 0x80
