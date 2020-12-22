@@ -43,6 +43,9 @@ def show_All():
     show_Registers()
     show_cycles()
 
+def print_debug(text):
+    pass
+    #print(text)
 #
 # ATARI 2600 core
 #
@@ -184,22 +187,22 @@ def RIOT_update():
         memory[0x284] = value
         tim_prescaler =1 
         tim_cnt = 1
-        print('TIMER 1', value, clk_cycles/3)
+        print_debug("TIMER 1: {}, clk_cycles: {}".format(value, clk_cycles/3))
     elif addr == 0x295:
         memory[0x284] = value
         tim_prescaler =8 
         tim_cnt = 1
-        print('TIMER 8', value, clk_cycles/3)
+        print_debug("TIMER 8: {}, clk_cycles: {}".format(value, clk_cycles/3))
     elif addr == 0x296:
         memory[0x284] = value
         tim_prescaler = 64
         tim_cnt = 1
-        print('TIMER 64', value, clk_cycles/3)
+        print_debug("TIMER 64: {}, clk_cycles: {}".format(value, clk_cycles/3))
     elif addr == 0x297:
         memory[0x284] = value
         tim_prescaler =1024 
         tim_cnt = 1
-        print('TIMER 1024', value, clk_cycles/3)
+        print_debug("TIMER 1024: {}, clk_cycles: {}".format(value, clk_cycles/3))
 
     # elif ...
 
@@ -218,18 +221,18 @@ def TIA_update():
 
         #clk_cycles = 228 # NTSC
         wsync = 1
-        print('WSYNC', line, hex(PC))
+        print_debug('WSYNC line {}, PC {}'.format(line, hex(PC)))
 
     if addr == RSYNC:
         global rsync
 
         rsync = 1
-        print('RSYNC')
+        print_debug('RSYNC')
 
     elif addr == VSYNC:
         global  line
         global  vsync
-        print 'VSYNC', value, clk_cycles, total_cycles, line
+        print_debug("VSYNC val:{}, clk_cycles:{}, total_cycles:{}, line:{}".format(value, clk_cycles, total_cycles, line))
         if value != 0:
             vsync = 1
         else: # value == 0
@@ -242,11 +245,11 @@ def TIA_update():
     elif addr == RESP0:
         # Single scalar, so assumng a single update during the line
         P0_pos = clk_cycles - 68 + 5 # +5 Not sure why.. taken from Stella emulator (experimental using Stella debugger)
-        print('RESP0 ', P0_pos, line, frame_cnt)
+        print_debug("RESP0 pos:{}, line:{}, frame_cnt:{}".format(P0_pos, line, frame_cnt))
 
     elif addr == RESP1:
         P1_pos = clk_cycles - 68 + 5
-        print('RESP1', P1_pos)
+        print_debug("RESP1 pos:{}".format(P0_pos))
 
     elif addr == RESM0:
         M0_pos = clk_cycles - 68
@@ -336,7 +339,7 @@ def TIA_update():
 
     elif addr == GRP1:
         pass
-        print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
+        #print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
 
 
 # Memory bus operation
@@ -348,7 +351,7 @@ def MEM_WRITE(addr, value):
     memory[addr] = value
     
     if addr >= 0x40 and addr < 0x80:
-        print('ZERO PAGE ', hex(addr))
+        print_debug("ZERO PAGE 0x{:02X}".format(addr))
         addr -= 0x40
         #sys.exit()
 
@@ -367,7 +370,7 @@ def MEM_WRITE(addr, value):
         RIOT_UPDATE = True
         riot_addr  = addr
         riot_value = value
-        print('W_ADDR {}'.format(hex(addr)), value)
+        print_debug('W_ADDR 0x{:4X}, val:{}'.format(addr, value))
 
             
 def MEM_READ(addr):
@@ -375,15 +378,15 @@ def MEM_READ(addr):
     addr &= MAX_MEM_ADDR
 
     if addr >= 0x40 and addr < 0x80:
-        print('ZERO PAGE ', addr)
+        print_debug("ZERO PAGE {}".format(addr))
         addr -= 0x40
         sys.exit()
 
     if addr > 0x280 and addr < 0x300:
-        print("R_ADDR {}".format(hex(addr)), hex(PC), tim_prescaler,  tim_cnt, memory[0x284])
+        print_debug("R_ADDR {} PC:{}, tim_pres:{}, tim_cnt:{}".format(hex(addr), hex(PC), tim_prescaler, tim_cnt))
 
     if addr < 0x0E:
-        print("USED TIA {}".format(addr))
+        print_debug("USED TIA {}".format(addr))
 
     return memory[addr]
 
@@ -639,7 +642,7 @@ def brk_(unused):
     SP -= 3
     # PC = interrupt vector
     PC = (MEM_READ(MEM_READ_ABSOLUTE(0xfffe)) | MEM_READ(MEM_READ_ABSOLUTE(0xffff))<<8)
-    print(hex(PC))
+    print_debug(hex(PC))
 
     return 0
 
@@ -1644,12 +1647,24 @@ with open("../prueba.bin", "rb") as f:
 
 for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)
-    memory[0x1800 + i] = ord(byte)
+    #memory[0x1800 + i] = ord(byte)
 
 pygame.init()
 # Scaling by is faster than using pygame.SCALED flag
 display = pygame.display.set_mode([320*3,192*3])
 surface = pygame.Surface((160, 192))
+
+# Init input registers
+memory[0x280] = 0xff
+memory[0x281] = 0x00
+memory[0x282] = 0x3f
+memory[0x283] = 0x00 # Actuallty hardwired as input
+memory[0x38]  = 0x80
+memory[0x39]  = 0x80
+memory[0x3a]  = 0x80
+memory[0x3b]  = 0x80
+memory[0x3c]  = 0x80
+memory[0x3d]  = 0x80
 
 PC = 0xF000
 ss = 0
@@ -1659,21 +1674,8 @@ for i in range(19000*401):
     page_crossed = 0
     
 
-    #trampas
-    memory[0x280] = 0xff
-    memory[0x281] = 0x00
-    memory[0x282] = 0x3f
-    memory[0x283] = 0x00
-    memory[0x38] = 0x80
-    memory[0x39] = 0x80
-    memory[0x3a] = 0x80
-    memory[0x3b] = 0x80
-    memory[0x3c] = 0x80
-    memory[0x3d] = 0x80
-
-
     # Get the next opcode
-    print("PC {}".format(hex(PC)))
+    print_debug("PC {}".format(hex(PC)))
     opcode = MEM_READ(PC)
     #print hex(opcode)
     opFunc, opMode, nbytes, ncycles, add_page_crossed = opcode_table[opcode]
@@ -1726,14 +1728,13 @@ for i in range(19000*401):
         rsync = 0
 
     if line != 60:
-        print hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles,  memory[0xb3], A
-    print(clk_cycles/3, wsync)
+        print_debug("PC:{}, Opcode:{}, opFunc:{}, Addr:{}, nbytes:{}, ncycles:{}, clk_cyles:{}".format(hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles))
 
     # TIA: draw TV line
     if clk_cycles >= 228:
         total_cycles += 228
         clk_cycles %= 228
-        print("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3), memory[0x284])
+        print_debug("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
         #if frame_cnt < 3:
         #    print('CLK ', clk_cycles)
         #print clk_cycles % 228
@@ -1759,8 +1760,8 @@ for i in range(19000*401):
 
 
             t2 = time.time()
-            print("\nFRAME {}: line {}".format(frame_cnt, line))
-            print 1/(t2-t1), ' Hz', frame_cnt, line, total_cycles
+            print_debug("\nFRAME {}: line {}".format(frame_cnt, line))
+            print("{} Hz, frame {}, line {}, total_cycles {}".format( 1/(t2-t1), frame_cnt, line, total_cycles))
             #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
@@ -1775,11 +1776,78 @@ for i in range(19000*401):
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
                 pygame.display.flip()
-            if frame_cnt == 16:
+            if frame_cnt == 400:
                 break
             #time.sleep(1)
         #if (line % 10) == 0:
         #    code.interact(local=locals())
+
+            # Input keyboard
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit();
+                    sys.exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_0:
+                        memory[0x282] &= ~0x01    # reset
+                    elif event.key == pygame.K_1:
+                        memory[0x282] &= ~0x02    # select
+                    elif event.key == pygame.K_l:
+                        memory[0x280] &= ~0x80    # P0 right
+                    elif event.key == pygame.K_j:
+                        memory[0x280] &= ~0x40    # P0 left
+                    elif event.key == pygame.K_k:
+                        memory[0x280] &= ~0x20    # P0 down
+                    elif event.key == pygame.K_i:
+                        memory[0x280] &= ~0x10    # P0 up
+                    elif event.key == pygame.K_d:
+                        memory[0x280] &= ~0x08    # P1 right
+                    elif event.key == pygame.K_a:
+                        memory[0x280] &= ~0x04    # P1 left
+                    elif event.key == pygame.K_s:
+                        memory[0x280] &= ~0x02    # P1 down
+                    elif event.key == pygame.K_w:
+                        memory[0x280] &= ~0x01    # P1 up
+                    elif event.key == pygame.K_2:
+                        memory[0x282] ^= 0x80     # P0 difficulty 
+                    elif event.key == pygame.K_3:
+                        memory[0x282] ^= 0x40     # P1 difficulty
+
+                if event.type == pygame.KEYUP:
+                    if event.key == pygame.K_0:
+                        memory[0x282] |= 0x01
+                    elif event.key == pygame.K_1:
+                        memory[0x282] |= 0x02
+                    elif event.key == pygame.K_l:
+                        memory[0x280] |= 0x80    # P0 right
+                    elif event.key == pygame.K_j:
+                        memory[0x280] |= 0x40    # P0 left
+                    elif event.key == pygame.K_k:
+                        memory[0x280] |= 0x20    # P0 down
+                    elif event.key == pygame.K_i:
+                        memory[0x280] |= 0x10    # P0 up
+                    elif event.key == pygame.K_d:
+                        memory[0x280] |= 0x08    # P1 right
+                    elif event.key == pygame.K_a:
+                        memory[0x280] |= 0x04    # P1 left
+                    elif event.key == pygame.K_s:
+                        memory[0x280] |= 0x02    # P1 down
+                    elif event.key == pygame.K_w:
+                        memory[0x280] |= 0x01    # P1 up
+
+            #keys = pygame.key.get_pressed()
+            #if keys[K_LEFT]:
+            #    if move_ticker == 0:
+            #        move_ticker = 10
+            #        location -= 1
+            #        if location == -1:
+            #            location = 0
+            #if keys[K_RIGHT]:
+            #    if move_ticker == 0:
+            #        move_ticker = 10
+            #        location+=1
+            #        if location == 5:
+            #            location = 4
 
 time.sleep(2)
 #
