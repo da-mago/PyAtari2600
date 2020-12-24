@@ -244,21 +244,21 @@ def TIA_update():
 
     elif addr == RESP0:
         # Single scalar, so assumng a single update during the line
-        P0_pos = clk_cycles - 68 + 5 # +5 Not sure why.. taken from Stella emulator (experimental using Stella debugger)
+        P0_pos = clk_cycles - 68 + 5 if clk_cycles >= 68 else 1
         print_debug("RESP0 pos:{}, line:{}, frame_cnt:{}".format(P0_pos, line, frame_cnt))
 
     elif addr == RESP1:
-        P1_pos = clk_cycles - 68 + 5
+        P1_pos = clk_cycles - 68 + 5 if clk_cycles >= 68 else 1
         print_debug("RESP1 pos:{}".format(P0_pos))
 
     elif addr == RESM0:
-        M0_pos = clk_cycles - 68
+        M0_pos = clk_cycles - 68 if clk_cycles >= 68 else 1
 
     elif addr == RESM1:
-        M1_pos = clk_cycles - 68
+        M1_pos = clk_cycles - 68 if clk_cycles >= 68 else 1
 
     elif addr == RESBL:
-        BL_pos = clk_cycles - 68
+        BL_pos = clk_cycles - 68 if clk_cycles >= 68 else 1
 
     elif addr == HMOVE:
         pass
@@ -364,14 +364,14 @@ def MEM_WRITE(addr, value):
         tia_value = value
 
         if addr > 0x3f:
-            print('W_ADDR {}'.format(hex(addr)))
+            print_debug('W_ADDR {}'.format(hex(addr)))
 
     if addr > 0x280:
         global RIOT_UPDATE, riot_addr, riot_value
         RIOT_UPDATE = True
         riot_addr  = addr
         riot_value = value
-        print('W_ADDR 0x{:4X}, val:{}'.format(addr, value))
+        print_debug('W_ADDR 0x{:4X}, val:{}'.format(addr, value))
 
             
 def MEM_READ(addr):
@@ -1617,18 +1617,21 @@ def draw_line():
     P0_color = colorMap[memory[COLUP0]>>1] # assuming no change in color during the first half-line
     P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
     for i in range(8):
+        clk_pixel = (P0_pos + i) % 160
         if memory[REFP0] & 0x08:
             if memory[GRP0] & (0x01<<i):
-                screen[P0_pos + i, line - 40] = P1_color # Assuming one pixel size
+                screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
         else:
             if memory[GRP0] & (0x80>>i):
-                screen[P0_pos + i, line - 40] = P0_color # Assuming one pixel size
+                screen[clk_pixel, line - 40] = P0_color # Assuming one pixel size
+
+        clk_pixel = (P1_pos + i) % 160
         if memory[REFP1] & 0x08:
             if memory[GRP1] & (0x01<<i):
-                screen[P1_pos + i, line - 40] = P1_color # Assuming one pixel size
+                screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
         else:
             if memory[GRP1] & (0x80>>i):
-                screen[P1_pos + i, line - 40] = P1_color # Assuming one pixel size
+                screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
             
         #screen[GP1_pos + i, line - 40] = GP1_color
         #screen[MP1_pos + i, line - 40] = GP1_color
@@ -1757,12 +1760,13 @@ for i in range(19000*401):
         #if line == 4:
         if vsync == 2:
             vsync = 0
+            print("frame {} line:{}".format(frame_cnt, line))
             line = 3
 
 
             t2 = time.time()
             print_debug("\nFRAME {}: line {}".format(frame_cnt, line))
-            print("{} Hz, frame {}, line {}, total_cycles {}".format( 1/(t2-t1), frame_cnt, line, total_cycles))
+            print_debug("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
             #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
@@ -1779,7 +1783,7 @@ for i in range(19000*401):
                 pygame.display.flip()
             if frame_cnt == 400:
                 break
-            #time.sleep(1)
+            time.sleep(1)
         #if (line % 10) == 0:
         #    code.interact(local=locals())
 
