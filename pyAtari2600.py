@@ -357,8 +357,8 @@ def TIA_update():
         #print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
 
     elif addr == RESMP0:
-        if value == 0x02:
-            M0_pos = P0_pos
+        if (value >> 1) & 0x01:
+            M0_pos = P0_pos + 4 # Middle of the P0
 
 
 # Memory bus operation
@@ -1694,12 +1694,12 @@ import time
 #f = open("3_Bars_Background.bin", "rb")
 #with open("prueba.bin", "rb") as f:
 #with open("../ROMS/pace Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
-with open("../prueba.bin", "rb") as f:
+with open("../prueba4.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
     memory[0x1000 + i] = ord(byte)  # For python2
-    memory[0x1800 + i] = ord(byte)
+    #memory[0x1800 + i] = ord(byte)
     #memory[0x1000 + i] = byte # For python3
     #memory[0x1800 + i] = byte
 
@@ -1713,12 +1713,12 @@ memory[0x280] = 0xff
 memory[0x281] = 0x00
 memory[0x282] = 0x2f
 memory[0x283] = 0x00 # Actuallty hardwired as input
-memory[0x08]  = 0x80
-memory[0x09]  = 0x80
-memory[0x0a]  = 0x80
-memory[0x0b]  = 0x80
-memory[0x0c]  = 0x80
-memory[0x0d]  = 0x80
+tia_rd[0x08]  = 0x80
+tia_rd[0x09]  = 0x80
+tia_rd[0x0a]  = 0x80
+tia_rd[0x0b]  = 0x80
+tia_rd[0x0c]  = 0x80
+tia_rd[0x0d]  = 0x80
 
 PC = 0xF000
 ss = 0
@@ -1835,13 +1835,13 @@ for i in range(19000*401):
         #if line == 4:
         if vsync == 2:
             vsync = 0
-            print("frame {} line:{}".format(frame_cnt, line))
+            print_debug("frame {} line:{}".format(frame_cnt, line))
             line = 3
 
 
             t2 = time.time()
             print_debug("\nFRAME {}: line {}".format(frame_cnt, line))
-            print("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
+            print_debug("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
             #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
@@ -1893,9 +1893,9 @@ for i in range(19000*401):
                     elif event.key == pygame.K_3:
                         memory[0x282] ^= 0x40     # P1 difficulty
 
-                    elif event.key == pygame.K_x:
-                        tia_rd[0x0C] &= ~0x80     # P0 button
                     elif event.key == pygame.K_m:
+                        tia_rd[0x0C] &= ~0x80     # P0 button
+                    elif event.key == pygame.K_x:
                         tia_rd[0x0D] &= ~0x80     # P1 button
 
                 if event.type == pygame.KEYUP:
@@ -1920,9 +1920,9 @@ for i in range(19000*401):
                     elif event.key == pygame.K_w:
                         memory[0x280] |= 0x01    # P1 up
 
-                    elif event.key == pygame.K_x:
-                        tia_rd[0x0C] |= 0x80     # P0 button
                     elif event.key == pygame.K_m:
+                        tia_rd[0x0C] |= 0x80     # P0 button
+                    elif event.key == pygame.K_x:
                         tia_rd[0x0D] |= 0x80     # P1 button
 
             #keys = pygame.key.get_pressed()
