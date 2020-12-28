@@ -55,6 +55,7 @@ PC = 0                             # Program counter
 SP = 0                             # Stack pointer
 N = V = B = D = I = Z = C = False  # Status flags
 memory = [0 for x in range(2**13)] # Memory map
+tia_rd = [0 for x in range(0xff)]  # TIA (READ) Memory map
 clk_cycles = 0                     # Atari clock cycles
 page_crossed = 0
 frame_cnt = 0
@@ -70,6 +71,12 @@ pf0_l = pf0_r = pf1_l = pf1_r = pf2_l = pf2_r = 0
 pf_mirror = 0
 # Sprites
 P0_pos = P1_pos = M0_pos = M1_pos = BL_pos = 0
+P0_GR = np.zeros((3,4), dtype=np.uint8)
+M0_GR = np.zeros((3,4), dtype=np.uint8)
+BL_GR = np.zeros((3,4), dtype=np.uint8)
+GRP_size   = [1,1,1,1,1,2,1,4]
+GRP_dist   = [0,1,2,1,4,0,2,0]
+GRP_copies = [1,2,2,3,2,1,3,1]
 #
 TIA_UPDATE = False
 tia_addr  = 0
@@ -335,11 +342,23 @@ def TIA_update():
 
     elif addr == GRP0:
         pass
+        nusiz0 = memory[NUSIZ0] & 0x07
+        size   = GRP_size[nusiz0]
+        if clk_cycles < (P0_pos + 68):
+            P0_GR[:size,0] = memory[GRP0]
+        elif clk_cycles < (P0_pos + 68 + 16*size):
+            P0_GR[1:size,0] = memory[GRP0]
+        elif clk_cycles < (P0_pos + 68 + 32*size):
+            P0_GR[2:size,0] = memory[GRP0]
         #print('GRP0', value, line, frame_cnt)
 
     elif addr == GRP1:
         pass
         #print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
+
+    elif addr == RESMP0:
+        if value == 0x02:
+            M0_pos = P0_pos
 
 
 # Memory bus operation
@@ -386,8 +405,10 @@ def MEM_READ(addr):
     if addr > 0x280 and addr < 0x300:
         print_debug("R_ADDR {} PC:{}, tim_pres:{}, tim_cnt:{}".format(hex(addr), hex(PC), tim_prescaler, tim_cnt))
 
-    if addr < 0x0E:
-        print_debug("USED TIA {}".format(addr))
+    if addr < 0x0E or (addr >= 0x30 and addr < 0x3E):
+        if addr&0x0f > 8:
+            print("USED TIA {}".format(hex(addr&0x0f)))
+        return tia_rd[addr & 0x0F]
 
     return memory[addr]
 
@@ -519,7 +540,7 @@ def PSW_SET(val):
 
 # Unknown opcode
 def unknown(unused):
-    print "opcode not implemented"
+    print("opcode not implemented")
     return 0
 
 # ADC
@@ -1617,13 +1638,16 @@ def draw_line():
     P0_color = colorMap[memory[COLUP0]>>1] # assuming no change in color during the first half-line
     P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
     for i in range(8):
-        clk_pixel = (P0_pos + i) % 160
-        if memory[REFP0] & 0x08:
-            if memory[GRP0] & (0x01<<i):
-                screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
-        else:
-            if memory[GRP0] & (0x80>>i):
-                screen[clk_pixel, line - 40] = P0_color # Assuming one pixel size
+        #clk_pixel = (P0_pos + i) % 160
+        #size = 1
+        #pixel_ini = (P0_pos + size*i) % 160
+        #pixel_end = (P0_pos + size*(i+1) + 1) % 160
+        #if memory[REFP0] & 0x08:
+        #    if memory[GRP0] & (0x01<<i):
+        #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+        #else:
+        #    if memory[GRP0] & (0x80>>i):
+        #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
 
         clk_pixel = (P1_pos + i) % 160
         if memory[REFP1] & 0x08:
@@ -1635,8 +1659,32 @@ def draw_line():
             
         #screen[GP1_pos + i, line - 40] = GP1_color
         #screen[MP1_pos + i, line - 40] = GP1_color
+    for grp, pos, size, dist in P0_GR:
+        if grp != 0:
+            for i in range(8):
+                pixel_ini = (pos + size*i) % 160
+                pixel_end = (pos + size*(i+1) + 1) % 160
+                if memory[REFP0] & 0x08:
+                    if grp & (0x01<<i):
+                        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+                else:
+                    if grp & (0x80>>i):
+                        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
 
+    # Update Missiles
+    for grp, pos, size, dist in M0_GR:
+        if grp != 0:
+            pixel_ini = pos % 160
+            pixel_end = (pos + size + 1) % 160
+            screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
 
+    # Update Ball
+    BL_color = colorMap[memory[COLUPF]>>1]
+    for grp, pos, size, _ in BL_GR:
+        if grp != 0:
+            pixel_ini = pos % 160
+            pixel_end = (pos + size + 1) % 160
+            screen[pixel_ini:pixel_end, line - 40] = BL_color # Assuming one pixel size
 
 
 import time
@@ -1650,8 +1698,10 @@ with open("../prueba.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
-    memory[0x1000 + i] = ord(byte)
+    memory[0x1000 + i] = ord(byte)  # For python2
     memory[0x1800 + i] = ord(byte)
+    #memory[0x1000 + i] = byte # For python3
+    #memory[0x1800 + i] = byte
 
 pygame.init()
 # Scaling by is faster than using pygame.SCALED flag
@@ -1663,12 +1713,12 @@ memory[0x280] = 0xff
 memory[0x281] = 0x00
 memory[0x282] = 0x2f
 memory[0x283] = 0x00 # Actuallty hardwired as input
-memory[0x38]  = 0x80
-memory[0x39]  = 0x80
-memory[0x3a]  = 0x80
-memory[0x3b]  = 0x80
-memory[0x3c]  = 0x80
-memory[0x3d]  = 0x80
+memory[0x08]  = 0x80
+memory[0x09]  = 0x80
+memory[0x0a]  = 0x80
+memory[0x0b]  = 0x80
+memory[0x0c]  = 0x80
+memory[0x0d]  = 0x80
 
 PC = 0xF000
 ss = 0
@@ -1705,7 +1755,7 @@ for i in range(19000*401):
     else:
         discount = ncycles + extra_cycles
     if discount > tim_cnt:
-        memory[0x284] = (memory[0x284] - (discount/76 + 1)) & 0xff
+        memory[0x284] = (memory[0x284] - (discount//76 + 1)) & 0xff
     tim_cnt = (tim_cnt - discount) % tim_prescaler
 
 
@@ -1754,6 +1804,31 @@ for i in range(19000*401):
         pf2_l     = pf2_r = memory[PF2]
         pf_mirror = 1 if memory[CTRLPF] & 0x01 else 0
 
+        #memory[NUSIZ0] = 0
+        nusiz0 = memory[NUSIZ0] & 0x07
+        size   = GRP_size[nusiz0]
+        dist   = GRP_dist[nusiz0]
+        copies = GRP_copies[nusiz0]
+        sizeM  = 2 ** ((memory[NUSIZ0] & 0x30) >> 3)
+        sizeB  = 2 ** ((memory[CTRLPF] & 0x30) >> 3)
+        P0_GR[:,0] = 0
+        M0_GR[:,0] = 0
+        BL_GR[:,0] = 0
+        for i in range(copies):
+            P0_GR[i,0] = memory[GRP0]
+            P0_GR[i,1] = P0_pos + 16*i*dist
+            P0_GR[i,2] = size
+            P0_GR[i,3] = dist
+            M0_GR[i,0] = ((memory[ENAM0] >> 1) & 0x01) & ((~memory[RESMP0] >> 1) & 0x01)
+            M0_GR[i,1] = M0_pos + 16*i*dist
+            M0_GR[i,2] = sizeM
+            M0_GR[i,3] = dist
+            BL_GR[i,0] = ((memory[ENABL] >> 1) & 0x01)
+            BL_GR[i,1] = BL_pos
+            BL_GR[i,2] = sizeB
+            BL_GR[i,3] = 0
+
+
         line += 1
         #print('Line {}'.format(line))
         #if line >= 262 or line == 4:
@@ -1766,7 +1841,7 @@ for i in range(19000*401):
 
             t2 = time.time()
             print_debug("\nFRAME {}: line {}".format(frame_cnt, line))
-            print_debug("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
+            print("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
             #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
@@ -1783,7 +1858,7 @@ for i in range(19000*401):
                 pygame.display.flip()
             if frame_cnt == 400:
                 break
-            time.sleep(1)
+            #time.sleep(1)
         #if (line % 10) == 0:
         #    code.interact(local=locals())
 
@@ -1818,6 +1893,11 @@ for i in range(19000*401):
                     elif event.key == pygame.K_3:
                         memory[0x282] ^= 0x40     # P1 difficulty
 
+                    elif event.key == pygame.K_x:
+                        tia_rd[0x0C] &= ~0x80     # P0 button
+                    elif event.key == pygame.K_m:
+                        tia_rd[0x0D] &= ~0x80     # P1 button
+
                 if event.type == pygame.KEYUP:
                     if event.key == pygame.K_0:
                         memory[0x282] |= 0x01
@@ -1839,6 +1919,11 @@ for i in range(19000*401):
                         memory[0x280] |= 0x02    # P1 down
                     elif event.key == pygame.K_w:
                         memory[0x280] |= 0x01    # P1 up
+
+                    elif event.key == pygame.K_x:
+                        tia_rd[0x0C] |= 0x80     # P0 button
+                    elif event.key == pygame.K_m:
+                        tia_rd[0x0D] |= 0x80     # P1 button
 
             #keys = pygame.key.get_pressed()
             #if keys[K_LEFT]:
