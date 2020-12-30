@@ -64,19 +64,24 @@ line = 0
 vsync = 0
 wsync = 0
 rsync = 0
-screen = np.zeros((160, 192, 3), dtype=np.uint8)
+screen = np.zeros((160, 192+20, 3), dtype=np.uint8)
 colubk = [[0,0]] # List of background colour changes during the line
 # Playfield (40 bits)
 pf0_l = pf0_r = pf1_l = pf1_r = pf2_l = pf2_r = 0
 pf_mirror = 0
 # Sprites
 P0_pos = P1_pos = M0_pos = M1_pos = BL_pos = 0
-P0_GR = np.zeros((3,4), dtype=np.uint8)
+P0_GR = np.zeros((3,3), dtype=np.uint8)
 M0_GR = np.zeros((3,4), dtype=np.uint8)
-BL_GR = np.zeros((3,4), dtype=np.uint8)
-GRP_size   = [1,1,1,1,1,2,1,4]
-GRP_dist   = [0,1,2,1,4,0,2,0]
-GRP_copies = [1,2,2,3,2,1,3,1]
+BL_GR = np.zeros((4), dtype=np.uint8)
+GRP_size   = [1,  1,  1,  1,  1, 2,  1, 4]
+GRP_dist   = [0, 16, 32, 16, 64, 0, 32, 0]
+GRP_copies = [1,  2,  2,  3,  2, 1,  3, 1]
+
+dec2bin = [ [num & (0x80>>i) for i in range(8)] for num in range(256)]
+P0_line = np.zeros((160,), dtype=np.bool)
+P0_wr = False
+
 #
 TIA_UPDATE = False
 tia_addr  = 0
@@ -342,15 +347,55 @@ def TIA_update():
 
     elif addr == GRP0:
         pass
+        # Add color
         nusiz0 = memory[NUSIZ0] & 0x07
         size   = GRP_size[nusiz0]
-        if clk_cycles < (P0_pos + 68):
-            P0_GR[:size,0] = memory[GRP0]
-        elif clk_cycles < (P0_pos + 68 + 16*size):
-            P0_GR[1:size,0] = memory[GRP0]
-        elif clk_cycles < (P0_pos + 68 + 32*size):
-            P0_GR[2:size,0] = memory[GRP0]
-        #print('GRP0', value, line, frame_cnt)
+        dist   = GRP_dist[nusiz0]
+        copies = GRP_copies[nusiz0]
+        
+        grp = memory[GRP0]
+
+        if copies == 1:
+            if clk_cycles < (P0_pos + 68):
+                P0_GR[0,:] = [grp, P0_pos, size]
+        elif copies == 2:
+            if clk_cycles < (P0_pos + 68):
+                P0_GR[0,:] = [grp, P0_pos, size]
+            elif clk_cycles < (P0_pos + 68 + dist):
+                P0_GR[1,:] = [grp, pos, size]
+        elif copies == 3:
+            if clk_cycles < (P0_pos + 68):
+                P0_GR[0,:] = [grp, P0_pos, size]
+            elif clk_cycles < (P0_pos + 68 + dist):
+                P0_GR[1,:] = [grp, pos, size]
+            elif clk_cycles < (P0_pos + 68 + 2*dist):
+                P0_GR[2,:] = [grp, pos, size]
+
+
+        #grp_wr = True
+        #grp = memory[GRP0]
+        #if grp != -1:
+        #    nusiz0 = memory[NUSIZ0] & 0x07
+        #    size   = GRP_size[nusiz0]
+        #    dist   = GRP_dist[nusiz0]
+        #    copies = GRP_copies[nusiz0]
+        #    data = np.repeat(dec2bin[grp], size)
+        #    if memory[REFP0] & 0x08:
+        #        data = data[::-1]
+
+        #    if clk_cycles < (P0_pos + 68):
+        #        P0_line[:] = 0
+        #        P0_line[P0_pos : P0_pos+(8*size)] = data
+
+        #    if copies>1:
+        #        pos = P0_pos + dist
+        #        if clk_cycles < (pos + 68):
+        #            P0_line[pos : pos+(8*size)] = data
+
+        #    if copies>2:
+        #        pos = P0_pos + 2*dist
+        #        if clk_cycles < (pos + 68):
+        #            P0_line[pos : pos+(8*size)] = data
 
     elif addr == GRP1:
         pass
@@ -406,8 +451,8 @@ def MEM_READ(addr):
         print_debug("R_ADDR {} PC:{}, tim_pres:{}, tim_cnt:{}".format(hex(addr), hex(PC), tim_prescaler, tim_cnt))
 
     if addr < 0x0E or (addr >= 0x30 and addr < 0x3E):
-        if addr&0x0f > 8:
-            print("USED TIA {}".format(hex(addr&0x0f)))
+        #if addr&0x0f > 8:
+        #    print("USED TIA {}".format(hex(addr&0x0f)))
         return tia_rd[addr & 0x0F]
 
     return memory[addr]
@@ -1659,17 +1704,25 @@ def draw_line():
             
         #screen[GP1_pos + i, line - 40] = GP1_color
         #screen[MP1_pos + i, line - 40] = GP1_color
-    for grp, pos, size, dist in P0_GR:
-        if grp != 0:
-            for i in range(8):
-                pixel_ini = (pos + size*i) % 160
-                pixel_end = (pos + size*(i+1) + 1) % 160
-                if memory[REFP0] & 0x08:
-                    if grp & (0x01<<i):
-                        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
-                else:
-                    if grp & (0x80>>i):
-                        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+    #for grp, pos, size, dist in P0_GR:
+    #    if grp != 0:
+    #        for i in range(8):
+    #            pixel_ini = (pos + size*i) % 160
+    #            pixel_end = (pos + size*(i+1) + 1) % 160
+    #            if memory[REFP0] & 0x08:
+    #                if grp & (0x01<<i):
+    #                    screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+    #            else:
+    #                if grp & (0x80>>i):
+    #                    screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+
+    screen[P0_line>0, line - 40] = P0_color
+    #for grp, pos, size in P0_GR:
+    #    if grp != 0:
+    #        data = np.repeat(dec2bin[grp], size)
+    #        data[data>0] = P0_color
+    #        print(data, 8*size, P0_color)
+    #        screen[pos : pos+(8*size), line - 40] = data
 
     # Update Missiles
     for grp, pos, size, dist in M0_GR:
@@ -1680,11 +1733,11 @@ def draw_line():
 
     # Update Ball
     BL_color = colorMap[memory[COLUPF]>>1]
-    for grp, pos, size, _ in BL_GR:
-        if grp != 0:
-            pixel_ini = pos % 160
-            pixel_end = (pos + size + 1) % 160
-            screen[pixel_ini:pixel_end, line - 40] = BL_color # Assuming one pixel size
+    grp, pos, size, _ = BL_GR
+    if grp != 0:
+        pixel_ini = pos % 160
+        pixel_end = (pos + size + 1) % 160
+        screen[pixel_ini:pixel_end, line - 40] = BL_color # Assuming one pixel size
 
 
 import time
@@ -1694,7 +1747,7 @@ import time
 #f = open("3_Bars_Background.bin", "rb")
 #with open("prueba.bin", "rb") as f:
 #with open("../ROMS/pace Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
-with open("../prueba4.bin", "rb") as f:
+with open("../prueba.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
@@ -1705,8 +1758,8 @@ for i, byte in enumerate(rom):
 
 pygame.init()
 # Scaling by is faster than using pygame.SCALED flag
-display = pygame.display.set_mode([320*3,192*3])
-surface = pygame.Surface((160, 192))
+display = pygame.display.set_mode([320*3,(192+20)*3])
+surface = pygame.Surface((160, 192+20))
 
 # Init input registers
 memory[0x280] = 0xff
@@ -1793,8 +1846,30 @@ for i in range(19000*401):
         #    print('CLK ', clk_cycles)
         #print clk_cycles % 228
         #clk_cycles = 0
+
+        # Fill P0 line
+        # TODO:missing vdelay
+        if line >= 40 and line < (232 + 20):
+            nusiz0 = memory[NUSIZ0] & 0x07
+            #TODO: dist and size should be used from P0_GR
+            dist = GRP_dist[nusiz0]
+            size = GRP_size[nusiz0]
+            grpx = memory[GRP0]
+            for i,(grp, _, _) in enumerate(P0_GR):
+                if size == 0: grp  = grpx
+                else:         grpx = grp
+
+                pos = P0_pos + i*dist
+                if grp != 0:
+                    #print(line, grp, pos, size)
+                    data = np.repeat(dec2bin[grp], size)
+                    # TODO: we can add reverse arg as a new P0_GR item
+                    if memory[REFP0] & 0x08:
+                        data = data[::-1]
+                    P0_line[pos : pos+len(data)] = data
         
-        if line >= 40 and line < 232:
+        # Draw line
+        if line >= 40 and line < (232 + 20):
             draw_line()
 
         # Prepare internal vars for the next line
@@ -1811,23 +1886,43 @@ for i in range(19000*401):
         copies = GRP_copies[nusiz0]
         sizeM  = 2 ** ((memory[NUSIZ0] & 0x30) >> 3)
         sizeB  = 2 ** ((memory[CTRLPF] & 0x30) >> 3)
-        P0_GR[:,0] = 0
-        M0_GR[:,0] = 0
-        BL_GR[:,0] = 0
+        P0_GR[:,2] = 0
+        M0_GR[:,2] = 0
+        BL_GR[0] = 0
         for i in range(copies):
-            P0_GR[i,0] = memory[GRP0]
-            P0_GR[i,1] = P0_pos + 16*i*dist
-            P0_GR[i,2] = size
-            P0_GR[i,3] = dist
+            #P0_GR[i,0] = memory[GRP0]
+            #P0_GR[i,1] = P0_pos + i*dist
+            #P0_GR[i,2] = size
             M0_GR[i,0] = ((memory[ENAM0] >> 1) & 0x01) & ((~memory[RESMP0] >> 1) & 0x01)
-            M0_GR[i,1] = M0_pos + 16*i*dist
+            M0_GR[i,1] = M0_pos + i*dist
             M0_GR[i,2] = sizeM
             M0_GR[i,3] = dist
-            BL_GR[i,0] = ((memory[ENABL] >> 1) & 0x01)
-            BL_GR[i,1] = BL_pos
-            BL_GR[i,2] = sizeB
-            BL_GR[i,3] = 0
+        BL_GR[0] = ((memory[ENABL] >> 1) & 0x01)
+        BL_GR[1] = BL_pos
+        BL_GR[2] = sizeB
+        BL_GR[3] = 0
 
+        #P0_line_old = P0_line.copy()
+        P0_line[:] = 0
+
+        #grp = memory[GRP0]
+
+        #if grp != 0:
+        #    data = np.repeat(dec2bin[grp], size)
+        #    if memory[REFP0] & 0x08:
+        #        data = data[::-1]
+
+        #    P0_line[P0_pos : P0_pos+(8*size)] = data
+        #    if copies>1:
+        #        pos = P0_pos + dist
+        #        P0_line[pos : pos+(8*size)] = data
+        #    if copies>2:
+        #        pos = P0_pos + 2*dist
+        #        P0_line[pos : pos+(8*size)] = data
+        #    #if memory[GRP0] != 0: print(P0_line, memory[GRP0], line-40)
+
+        #if grp == 0:
+        #    P0_line[:] = 0
 
         line += 1
         #print('Line {}'.format(line))
@@ -1841,7 +1936,7 @@ for i in range(19000*401):
 
             t2 = time.time()
             print_debug("\nFRAME {}: line {}".format(frame_cnt, line))
-            print_debug("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
+            print("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
             #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
@@ -1851,7 +1946,7 @@ for i in range(19000*401):
             ss = 0
             if ss%2 == 0:
                 pygame.surfarray.blit_array(surface, screen)
-                display.blit(pygame.transform.scale(surface, (320*3,192*3)), (0, 0))
+                display.blit(pygame.transform.scale(surface, (320*3,(192+20)*3)), (0, 0))
                 #screen_fake = np.repeat(screen, 6, axis=0)
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
