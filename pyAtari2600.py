@@ -72,7 +72,9 @@ pf_mirror = 0
 # Sprites
 P0_pos = P1_pos = M0_pos = M1_pos = BL_pos = 0
 P0_GR = np.zeros((3,3), dtype=np.uint8)
-M0_GR = np.zeros((3,4), dtype=np.uint8)
+P1_GR = np.zeros((3,3), dtype=np.uint8)
+M0_GR = np.zeros((3,3), dtype=np.uint8)
+M1_GR = np.zeros((3,3), dtype=np.uint8)
 BL_GR = np.zeros((4), dtype=np.uint8)
 GRP_size   = [1,  1,  1,  1,  1, 2,  1, 4]
 GRP_dist   = [0, 16, 32, 16, 64, 0, 32, 0]
@@ -80,7 +82,10 @@ GRP_copies = [1,  2,  2,  3,  2, 1,  3, 1]
 
 dec2bin = [ [num & (0x80>>i) for i in range(8)] for num in range(256)]
 P0_line = np.zeros((160,), dtype=np.bool)
-P0_wr = False
+P1_line = np.zeros((160,), dtype=np.bool)
+M0_line = np.zeros((160,), dtype=np.bool)
+M1_line = np.zeros((160,), dtype=np.bool)
+BL_line = np.zeros((160,), dtype=np.bool)
 
 #
 TIA_UPDATE = False
@@ -400,10 +405,38 @@ def TIA_update():
     elif addr == GRP1:
         pass
         #print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
+        nusiz1 = memory[NUSIZ1] & 0x07
+        size   = GRP_size[nusiz1]
+        dist   = GRP_dist[nusiz1]
+        copies = GRP_copies[nusiz1]
+        
+        grp1 = value
+
+        if copies == 1:
+            if clk_cycles < (P1_pos + 68):
+                P1_GR[0,:] = [grp1, P1_pos, size]
+        elif copies == 2:
+            if clk_cycles < (P1_pos + 68):
+                P1_GR[0,:] = [grp, P1_pos, size]
+            elif clk_cycles < (P1_pos + 68 + dist):
+                P1_GR[1,:] = [grp, pos, size]
+        elif copies == 3:
+            if clk_cycles < (P1_pos + 68):
+                P1_GR[0,:] = [grp, P1_pos, size]
+            elif clk_cycles < (P1_pos + 68 + dist):
+                P1_GR[1,:] = [grp, pos, size]
+            elif clk_cycles < (P1_pos + 68 + 2*dist):
+                P1_GR[2,:] = [grp, pos, size]
 
     elif addr == RESMP0:
         if (value >> 1) & 0x01:
             M0_pos = P0_pos + 4 # Middle of the P0
+
+    #elif addr == NUSIZ0:
+    #    print("NUSIZ0", value)
+
+    #elif addr == NUSIZ1:
+    #    print("NUSIZ1", value)
 
 
 # Memory bus operation
@@ -1682,25 +1715,25 @@ def draw_line():
     size = 1
     P0_color = colorMap[memory[COLUP0]>>1] # assuming no change in color during the first half-line
     P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
-    for i in range(8):
-        #clk_pixel = (P0_pos + i) % 160
-        #size = 1
-        #pixel_ini = (P0_pos + size*i) % 160
-        #pixel_end = (P0_pos + size*(i+1) + 1) % 160
-        #if memory[REFP0] & 0x08:
-        #    if memory[GRP0] & (0x01<<i):
-        #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
-        #else:
-        #    if memory[GRP0] & (0x80>>i):
-        #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+    #for i in range(8):
+    #    #clk_pixel = (P0_pos + i) % 160
+    #    #size = 1
+    #    #pixel_ini = (P0_pos + size*i) % 160
+    #    #pixel_end = (P0_pos + size*(i+1) + 1) % 160
+    #    #if memory[REFP0] & 0x08:
+    #    #    if memory[GRP0] & (0x01<<i):
+    #    #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+    #    #else:
+    #    #    if memory[GRP0] & (0x80>>i):
+    #    #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
 
-        clk_pixel = (P1_pos + i) % 160
-        if memory[REFP1] & 0x08:
-            if memory[GRP1] & (0x01<<i):
-                screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
-        else:
-            if memory[GRP1] & (0x80>>i):
-                screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
+    #    clk_pixel = (P1_pos + i) % 160
+    #    if memory[REFP1] & 0x08:
+    #        if memory[GRP1] & (0x01<<i):
+    #            screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
+    #    else:
+    #        if memory[GRP1] & (0x80>>i):
+    #            screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
             
         #screen[GP1_pos + i, line - 40] = GP1_color
         #screen[MP1_pos + i, line - 40] = GP1_color
@@ -1717,6 +1750,7 @@ def draw_line():
     #                    screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
 
     screen[P0_line>0, line - 40] = P0_color
+    screen[P1_line>0, line - 40] = P1_color
     #for grp, pos, size in P0_GR:
     #    if grp != 0:
     #        data = np.repeat(dec2bin[grp], size)
@@ -1839,9 +1873,6 @@ for i in range(19000*401):
 
     # TIA: draw TV line
     if clk_cycles >= 228:
-        total_cycles += 228
-        clk_cycles %= 228
-        print_debug("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
         #if frame_cnt < 3:
         #    print('CLK ', clk_cycles)
         #print clk_cycles % 228
@@ -1852,22 +1883,46 @@ for i in range(19000*401):
         if line >= 40 and line < (232 + 20):
             nusiz0 = memory[NUSIZ0] & 0x07
             #TODO: dist and size should be used from P0_GR
-            dist = GRP_dist[nusiz0]
-            size = GRP_size[nusiz0]
+            #dist = GRP_dist[nusiz0]
+            #size = GRP_size[nusiz0]
             grpx = memory[GRP0]
             for i,(grp, _, _) in enumerate(P0_GR):
-                if size == 0: grp  = grpx
+                if size == 0: 
+                    grp  = grpx
+                    dist = GRP_dist[nusiz0]
+                    size = GRP_size[nusiz0]
                 else:         grpx = grp
 
                 pos = P0_pos + i*dist
                 if grp != 0:
-                    #print(line, grp, pos, size)
                     data = np.repeat(dec2bin[grp], size)
                     # TODO: we can add reverse arg as a new P0_GR item
                     if memory[REFP0] & 0x08:
                         data = data[::-1]
                     P0_line[pos : pos+len(data)] = data
         
+            nusiz1 = memory[NUSIZ1] & 0x07
+            #dist = GRP_dist[nusiz1]
+            #size = GRP_size[nusiz1]
+            grpx = memory[GRP1]
+            for i,(grp, _, size) in enumerate(P1_GR):
+                if size == 0:
+                    grp  = grpx
+                    size = GRP_size[nusiz1]
+                    dist = GRP_dist[nusiz1]
+                else:         grpx = grp
+
+                pos = P1_pos + i*dist
+                if grp != 0:
+                    data = np.repeat(dec2bin[grp], size)
+                    if memory[REFP1] & 0x08:
+                        data = data[::-1]
+                    P1_line[pos : pos+len(data)] = data
+        
+        total_cycles += 228
+        clk_cycles %= 228
+        print_debug("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
+
         # Draw line
         if line >= 40 and line < (232 + 20):
             draw_line()
@@ -1887,7 +1942,9 @@ for i in range(19000*401):
         sizeM  = 2 ** ((memory[NUSIZ0] & 0x30) >> 3)
         sizeB  = 2 ** ((memory[CTRLPF] & 0x30) >> 3)
         P0_GR[:,2] = 0
+        P1_GR[:,2] = 0
         M0_GR[:,2] = 0
+        M1_GR[:,2] = 0
         BL_GR[0] = 0
         for i in range(copies):
             #P0_GR[i,0] = memory[GRP0]
@@ -1904,6 +1961,10 @@ for i in range(19000*401):
 
         #P0_line_old = P0_line.copy()
         P0_line[:] = 0
+        P1_line[:] = 0
+        M0_line[:] = 0
+        M1_line[:] = 0
+        BL_line[:] = 0
 
         #grp = memory[GRP0]
 
@@ -2033,6 +2094,7 @@ for i in range(19000*401):
             #        location+=1
             #        if location == 5:
             #            location = 4
+
 
 time.sleep(2)
 #
