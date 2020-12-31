@@ -299,7 +299,8 @@ def TIA_update():
         memory[HMBL] = 0
 
     elif addr == CXCLR:
-        pass
+        for i in range(len(tia_rd)):
+            tia_rd[i] = 0
 
     elif addr == PF0:
         global pf0_l, pf0_r
@@ -436,10 +437,6 @@ def TIA_update():
     elif addr == RESMP1:
         if (value >> 1) & 0x01:
             M1_pos = P1_pos + 4 # Middle of the P1
-
-    elif addr == CXCLR:
-        for i in range(len(tia_rd)):
-            tia_rd[i] = 0
 
     #elif addr == NUSIZ0:
     #    print("NUSIZ0", value)
@@ -1846,6 +1843,14 @@ for i in range(19000*401):
         # Fill P0 line
         # TODO:missing vdelay
         if line >= 40 and line < (232 + 20):
+            # Playfield
+            # TODO: Compute PF_line so both Draw and Collision can be computed
+            #pf0ToBin = 
+            #PF_line[0:16]  = pf0ToBin[pf0_l >> 4]
+            #PF_line[16:48] = pf1ToBin[pf1_l]
+            #PF_line[48:80] = pf2ToBin[pf1_2]
+
+
             # Player 0
             nusiz0 = memory[NUSIZ0] & 0x07
             #TODO: dist and size should be used from P0_GR
