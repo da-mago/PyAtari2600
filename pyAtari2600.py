@@ -1743,7 +1743,7 @@ import time
 #f = open("3_Bars_Background.bin", "rb")
 #with open("prueba.bin", "rb") as f:
 #with open("../ROMS/pace Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
-with open("../prueba.bin", "rb") as f:
+with open("../prueba3.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
