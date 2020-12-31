@@ -75,7 +75,7 @@ P0_GR = np.zeros((3,3), dtype=np.uint8)
 P1_GR = np.zeros((3,3), dtype=np.uint8)
 M0_GR = np.zeros((3,3), dtype=np.uint8)
 M1_GR = np.zeros((3,3), dtype=np.uint8)
-BL_GR = np.zeros((4), dtype=np.uint8)
+BL_GR = np.zeros((3), dtype=np.uint8)
 GRP_size   = [1,  1,  1,  1,  1, 2,  1, 4]
 GRP_dist   = [0, 16, 32, 16, 64, 0, 32, 0]
 GRP_copies = [1,  2,  2,  3,  2, 1,  3, 1]
@@ -86,6 +86,7 @@ P1_line = np.zeros((160,), dtype=np.bool)
 M0_line = np.zeros((160,), dtype=np.bool)
 M1_line = np.zeros((160,), dtype=np.bool)
 BL_line = np.zeros((160,), dtype=np.bool)
+PF_line = np.zeros((160,), dtype=np.bool)
 
 #
 TIA_UPDATE = False
@@ -410,11 +411,11 @@ def TIA_update():
         dist   = GRP_dist[nusiz1]
         copies = GRP_copies[nusiz1]
         
-        grp1 = value
+        grp = value
 
         if copies == 1:
             if clk_cycles < (P1_pos + 68):
-                P1_GR[0,:] = [grp1, P1_pos, size]
+                P1_GR[0,:] = [grp, P1_pos, size]
         elif copies == 2:
             if clk_cycles < (P1_pos + 68):
                 P1_GR[0,:] = [grp, P1_pos, size]
@@ -431,6 +432,14 @@ def TIA_update():
     elif addr == RESMP0:
         if (value >> 1) & 0x01:
             M0_pos = P0_pos + 4 # Middle of the P0
+
+    elif addr == RESMP1:
+        if (value >> 1) & 0x01:
+            M1_pos = P1_pos + 4 # Middle of the P1
+
+    elif addr == CXCLR:
+        for i in range(len(tia_rd)):
+            tia_rd[i] = 0
 
     #elif addr == NUSIZ0:
     #    print("NUSIZ0", value)
@@ -1530,6 +1539,7 @@ def draw_line():
     '''
     
     line_visible = line - 40
+    screen_line = screen[:, line_visible]
     
     # Update background
     s2 = colubk[0][0]
@@ -1537,9 +1547,9 @@ def draw_line():
         s1 = s2
         s2 = colubk[i+1][0]
         color = colorMap[colubk[i][1]>>1]
-        screen[s1:s2, line_visible] = color
+        screen_line[s1:s2] = color
     color = colorMap[(colubk[-1][1]>>1)]
-    screen[s2:160, line_visible] = color
+    screen_line[s2:160] = color
     
     # Priority depends on CTRLPF.D2: assume it is 0 at this moment
     # PF color depends on CTRLPF D1: assume it is 0 at this moment (so use COLUPF)
@@ -1558,220 +1568,175 @@ def draw_line():
 
     # left-side display
     if pf0_l & 0x10: 
-        screen[0:4, line_visible]   = PF_color1
+        screen_line[0:4]   = PF_color1
     if pf0_l & 0x20: 
-        screen[4:8, line_visible]   = PF_color1
+        screen_line[4:8]   = PF_color1
     if pf0_l & 0x40: 
-        screen[8:12, line_visible]  = PF_color1
+        screen_line[8:12]  = PF_color1
     if pf0_l & 0x80: 
-        screen[12:16, line_visible] = PF_color1
+        screen_line[12:16] = PF_color1
     if pf1_l & 0x80:
-        screen[16:20, line_visible] = PF_color1
+        screen_line[16:20] = PF_color1
     if pf1_l & 0x40:
-        screen[20:24, line_visible] = PF_color1
+        screen_line[20:24] = PF_color1
     if pf1_l & 0x20:
-        screen[24:28, line_visible] = PF_color1
+        screen_line[24:28] = PF_color1
     if pf1_l & 0x10:
-        screen[28:32, line_visible] = PF_color1
+        screen_line[28:32] = PF_color1
     if pf1_l & 0x08:
-        screen[32:36, line_visible] = PF_color1
+        screen_line[32:36] = PF_color1
     if pf1_l & 0x04:
-        screen[36:40, line_visible] = PF_color1
+        screen_line[36:40] = PF_color1
     if pf1_l & 0x02:
-        screen[40:44, line_visible] = PF_color1
+        screen_line[40:44] = PF_color1
     if pf1_l & 0x01:
-        screen[44:48, line_visible] = PF_color1
+        screen_line[44:48] = PF_color1
     if pf2_l & 0x01:
-        screen[48:52, line_visible] = PF_color1
+        screen_line[48:52] = PF_color1
     if pf2_l & 0x02:
-        screen[52:56, line_visible] = PF_color1
+        screen_line[52:56] = PF_color1
     if pf2_l & 0x04:
-        screen[56:60, line_visible] = PF_color1
+        screen_line[56:60] = PF_color1
     if pf2_l & 0x08:
-        screen[60:64, line_visible] = PF_color1
+        screen_line[60:64] = PF_color1
     if pf2_l & 0x10:
-        screen[64:68, line_visible] = PF_color1
+        screen_line[64:68] = PF_color1
     if pf2_l & 0x20:
-        screen[68:72, line_visible] = PF_color1
+        screen_line[68:72] = PF_color1
     if pf2_l & 0x40:
-        screen[72:76, line_visible] = PF_color1
+        screen_line[72:76] = PF_color1
     if pf2_l & 0x80:
-        screen[76:80, line_visible]= PF_color1
+        screen_line[76:80]= PF_color1
 
     # right-side
     if not pf_mirror:
         if pf0_r & 0x10: 
-            screen[80:84, line_visible]   = PF_color2
+            screen_line[80:84]   = PF_color2
         if pf0_r & 0x20: 
-            screen[84:88, line_visible]   = PF_color2
+            screen_line[84:88]   = PF_color2
         if pf0_r & 0x40: 
-            screen[88:92, line_visible]   = PF_color2
+            screen_line[88:92]   = PF_color2
         if pf0_r & 0x80: 
-            screen[92:96, line_visible]   = PF_color2
+            screen_line[92:96]   = PF_color2
         if pf1_r & 0x80: 
-            screen[96:100, line_visible]  = PF_color2
+            screen_line[96:100]  = PF_color2
         if pf1_r & 0x40: 
-            screen[100:104, line_visible] = PF_color2
+            screen_line[100:104] = PF_color2
         if pf1_r & 0x20: 
-            screen[104:108, line_visible] = PF_color2
+            screen_line[104:108] = PF_color2
         if pf1_r & 0x10: 
-            screen[108:112, line_visible] = PF_color2
+            screen_line[108:112] = PF_color2
         if pf1_r & 0x08: 
-            screen[112:116, line_visible] = PF_color2
+            screen_line[112:116] = PF_color2
         if pf1_r & 0x04: 
-            screen[116:120, line_visible] = PF_color2
+            screen_line[116:120] = PF_color2
         if pf1_r & 0x02: 
-            screen[120:124, line_visible] = PF_color2
+            screen_line[120:124] = PF_color2
         if pf1_r & 0x01: 
-            screen[124:128, line_visible] = PF_color2
+            screen_line[124:128] = PF_color2
         if pf2_r & 0x01: 
-            screen[128:132, line_visible] = PF_color2
+            screen_line[128:132] = PF_color2
         if pf2_r & 0x02: 
-            screen[132:136, line_visible] = PF_color2
+            screen_line[132:136] = PF_color2
         if pf2_r & 0x04: 
-            screen[136:140, line_visible] = PF_color2
+            screen_line[136:140] = PF_color2
         if pf2_r & 0x08: 
-            screen[140:144, line_visible] = PF_color2
+            screen_line[140:144] = PF_color2
         if pf2_r & 0x10: 
-            screen[144:148, line_visible] = PF_color2
+            screen_line[144:148] = PF_color2
         if pf2_r & 0x20: 
-            screen[148:152, line_visible] = PF_color2
+            screen_line[148:152] = PF_color2
         if pf2_r & 0x40: 
-            screen[152:156, line_visible] = PF_color2
+            screen_line[152:156] = PF_color2
         if pf2_r & 0x80: 
-            screen[156:160, line_visible] = PF_color2
+            screen_line[156:160] = PF_color2
     else:
         if pf2_r & 0x80: 
-            screen[80:84, line_visible]   = PF_color2
+            screen_line[80:84]   = PF_color2
         if pf2_r & 0x40: 
-            screen[84:88, line_visible]   = PF_color2
+            screen_line[84:88]   = PF_color2
         if pf2_r & 0x20: 
-            screen[88:92, line_visible]   = PF_color2
+            screen_line[88:92]   = PF_color2
         if pf2_r & 0x10: 
-            screen[92:96, line_visible]   = PF_color2
+            screen_line[92:96]   = PF_color2
         if pf2_r & 0x08: 
-            screen[96:100, line_visible]  = PF_color2
+            screen_line[96:100]  = PF_color2
         if pf2_r & 0x04: 
-            screen[100:104, line_visible] = PF_color2
+            screen_line[100:104] = PF_color2
         if pf2_r & 0x02: 
-            screen[104:108, line_visible] = PF_color2
+            screen_line[104:108] = PF_color2
         if pf2_r & 0x01: 
-            screen[108:112, line_visible] = PF_color2
+            screen_line[108:112] = PF_color2
         if pf1_r & 0x01: 
-            screen[112:116, line_visible] = PF_color2
+            screen_line[112:116] = PF_color2
         if pf1_r & 0x02: 
-            screen[116:120, line_visible] = PF_color2
+            screen_line[116:120] = PF_color2
         if pf1_r & 0x04: 
-            screen[120:124, line_visible] = PF_color2
+            screen_line[120:124] = PF_color2
         if pf1_r & 0x08: 
-            screen[124:128, line_visible] = PF_color2
+            screen_line[124:128] = PF_color2
         if pf1_r & 0x10: 
-            screen[128:132, line_visible] = PF_color2
+            screen_line[128:132] = PF_color2
         if pf1_r & 0x20: 
-            screen[132:136, line_visible] = PF_color2
+            screen_line[132:136] = PF_color2
         if pf1_r & 0x40: 
-            screen[136:140, line_visible] = PF_color2
+            screen_line[136:140] = PF_color2
         if pf1_r & 0x80: 
-            screen[140:144, line_visible] = PF_color2
+            screen_line[140:144] = PF_color2
         if pf0_r & 0x80: 
-            screen[144:148, line_visible] = PF_color2
+            screen_line[144:148] = PF_color2
         if pf0_r & 0x40: 
-            screen[148:152, line_visible] = PF_color2
+            screen_line[148:152] = PF_color2
         if pf0_r & 0x20: 
-            screen[152:156, line_visible] = PF_color2
+            screen_line[152:156] = PF_color2
         if pf0_r & 0x10: 
-            screen[156:160, line_visible] = PF_color2
+            screen_line[156:160] = PF_color2
     #k=0
     #for j in range(8):
     #    if pf0_l & (0x10<<j) and j < 4: 
-    #        screen[k:k+4, line_visible]     = PF_color1
+    #        screen_line[k:k+4]     = PF_color1
     #    if pf1_l & (0x80>>j): 
-    #        screen[k+16:k+20, line_visible] = PF_color1
+    #        screen_line[k+16:k+20] = PF_color1
     #    if pf2_l & (0x01<<j): 
-    #        screen[k+48:k+52, line_visible] = PF_color1
+    #        screen_line[k+48:k+52] = PF_color1
     #    if not pf_mirror:
     #        if pf0_r & (0x10<<j) and j < 4: 
-    #            screen[k+80:k+84, line_visible]   = PF_color2 # Assuming no mirror
+    #            screen_line[k+80:k+84]   = PF_color2 # Assuming no mirror
     #        if pf1_r & (0x80>>j): 
-    #            screen[k+96:k+100, line_visible]  = PF_color2
+    #            screen_line[k+96:k+100]  = PF_color2
     #        if pf2_r & (0x01<<j): 
-    #            screen[k+128:k+132, line_visible] = PF_color2
+    #            screen_line[k+128:k+132] = PF_color2
     #    else:
     #        if pf2_r & (0x80>>j): 
-    #            screen[k+80:k+84, line_visible]   = PF_color2 # Assuming mirror
+    #            screen_line[k+80:k+84]   = PF_color2 # Assuming mirror
     #        if pf1_r & (0x01<<j): 
-    #            screen[k+112:k+116, line_visible] = PF_color2
+    #            screen_line[k+112:k+116] = PF_color2
     #        if pf0_r & (0x80>>j) and j < 4: 
-    #            screen[k+144:k+148, line_visible] = PF_color2 # Assuming no mirror
+    #            screen_line[k+144:k+148] = PF_color2 # Assuming no mirror
     #    k += 4
 
     a2 = time.clock()
     #print(a2-a1)
 #
 #    # Update Ball
-#    screen[BALL_pos, line] = BALL_color # Assuming one pixel size
+#    screen_line[BALL_pos] = BALL_color # Assuming one pixel size
 #
     # Update GPs and missiles
     size = 1
     P0_color = colorMap[memory[COLUP0]>>1] # assuming no change in color during the first half-line
     P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
-    #for i in range(8):
-    #    #clk_pixel = (P0_pos + i) % 160
-    #    #size = 1
-    #    #pixel_ini = (P0_pos + size*i) % 160
-    #    #pixel_end = (P0_pos + size*(i+1) + 1) % 160
-    #    #if memory[REFP0] & 0x08:
-    #    #    if memory[GRP0] & (0x01<<i):
-    #    #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
-    #    #else:
-    #    #    if memory[GRP0] & (0x80>>i):
-    #    #        screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
 
-    #    clk_pixel = (P1_pos + i) % 160
-    #    if memory[REFP1] & 0x08:
-    #        if memory[GRP1] & (0x01<<i):
-    #            screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
-    #    else:
-    #        if memory[GRP1] & (0x80>>i):
-    #            screen[clk_pixel, line - 40] = P1_color # Assuming one pixel size
-            
-        #screen[GP1_pos + i, line - 40] = GP1_color
-        #screen[MP1_pos + i, line - 40] = GP1_color
-    #for grp, pos, size, dist in P0_GR:
-    #    if grp != 0:
-    #        for i in range(8):
-    #            pixel_ini = (pos + size*i) % 160
-    #            pixel_end = (pos + size*(i+1) + 1) % 160
-    #            if memory[REFP0] & 0x08:
-    #                if grp & (0x01<<i):
-    #                    screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
-    #            else:
-    #                if grp & (0x80>>i):
-    #                    screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
-
-    screen[P0_line>0, line - 40] = P0_color
-    screen[P1_line>0, line - 40] = P1_color
-    #for grp, pos, size in P0_GR:
-    #    if grp != 0:
-    #        data = np.repeat(dec2bin[grp], size)
-    #        data[data>0] = P0_color
-    #        print(data, 8*size, P0_color)
-    #        screen[pos : pos+(8*size), line - 40] = data
+    # Update Players 0 and 1
+    screen_line[P0_line>0] = P0_color
+    screen_line[P1_line>0] = P1_color
 
     # Update Missiles
-    for grp, pos, size, dist in M0_GR:
-        if grp != 0:
-            pixel_ini = pos % 160
-            pixel_end = (pos + size + 1) % 160
-            screen[pixel_ini:pixel_end, line - 40] = P0_color # Assuming one pixel size
+    screen_line[M0_line>0] = P0_color
+    screen_line[M1_line>0] = P1_color
 
     # Update Ball
     BL_color = colorMap[memory[COLUPF]>>1]
-    grp, pos, size, _ = BL_GR
-    if grp != 0:
-        pixel_ini = pos % 160
-        pixel_end = (pos + size + 1) % 160
-        screen[pixel_ini:pixel_end, line - 40] = BL_color # Assuming one pixel size
+    screen_line[BL_line>0] = BL_color
 
 
 import time
@@ -1881,6 +1846,7 @@ for i in range(19000*401):
         # Fill P0 line
         # TODO:missing vdelay
         if line >= 40 and line < (232 + 20):
+            # Player 0
             nusiz0 = memory[NUSIZ0] & 0x07
             #TODO: dist and size should be used from P0_GR
             #dist = GRP_dist[nusiz0]
@@ -1891,7 +1857,8 @@ for i in range(19000*401):
                     grp  = grpx
                     dist = GRP_dist[nusiz0]
                     size = GRP_size[nusiz0]
-                else:         grpx = grp
+                else:
+                    grpx = grp
 
                 pos = P0_pos + i*dist
                 if grp != 0:
@@ -1901,6 +1868,7 @@ for i in range(19000*401):
                         data = data[::-1]
                     P0_line[pos : pos+len(data)] = data
         
+            # Player 1
             nusiz1 = memory[NUSIZ1] & 0x07
             #dist = GRP_dist[nusiz1]
             #size = GRP_size[nusiz1]
@@ -1910,15 +1878,91 @@ for i in range(19000*401):
                     grp  = grpx
                     size = GRP_size[nusiz1]
                     dist = GRP_dist[nusiz1]
-                else:         grpx = grp
+                else:
+                    grpx = grp
 
                 pos = P1_pos + i*dist
                 if grp != 0:
                     data = np.repeat(dec2bin[grp], size)
                     if memory[REFP1] & 0x08:
                         data = data[::-1]
-                    P1_line[pos : pos+len(data)] = data
+
+                    pos_end = pos+len(data)
+                    if pos_end <= 160:
+                        P1_line[pos : pos_end] = data
+                    else:
+                        tmp = pos_end - 160
+                        pos_ini = len(data) - tmp
+                        P1_line[pos : ] = data[ : pos_ini]
+                        P1_line[ : tmp] = data[pos_ini :]
+
+
+            # Missile 0
+            for grp, pos, size in M0_GR:
+                if grp != 0:
+                    M0_line[pos : pos+size] = True
         
+            # Missile 1
+            for grp, pos, size in M1_GR:
+                if grp != 0:
+                    M1_line[pos : pos+size] = True
+        
+            # Ball
+            grp, pos, size = BL_GR
+            if grp != 0:
+                BL_line[pos : pos+size] = True
+
+            # Collisions
+            if (P0_line & P1_line).any():
+                print("Collision P0-P1")
+                tia_rd[0x07] |= 0x80
+            if (P0_line & M0_line).any():
+                print("Collision P0-M0")
+                tia_rd[0x00] |= 0x40
+            if (P0_line & M1_line).any():
+                print("Collision P0-M1")
+                tia_rd[0x01] |= 0x80
+            if (P0_line & BL_line).any():
+                print("Collision P0-BL")
+                tia_rd[0x02] |= 0x40
+            if (P0_line & PF_line).any():
+                print("Collision P0-PF")
+                tia_rd[0x02] |= 0x80
+
+            if (P1_line & M0_line).any():
+                print("Collision P1-M0")
+                tia_rd[0x00] |= 0x80
+            if (P1_line & M1_line).any():
+                print("Collision P1-M1")
+                tia_rd[0x01] |= 0x40
+            if (P1_line & BL_line).any():
+                print("Collision P1-BL")
+                tia_rd[0x03] |= 0x40
+            if (P1_line & PF_line).any():
+                print("Collision P1-PF")
+                tia_rd[0x03] |= 0x80
+
+            if (M0_line & M1_line).any():
+                print("Collision M0-M1")
+                tia_rd[0x07] |= 0x40
+            if (M0_line & BL_line).any():
+                print("Collision M0-BL")
+                tia_rd[0x04] |= 0x40
+            if (M0_line & PF_line).any():
+                print("Collision M0-PF")
+                tia_rd[0x04] |= 0x80
+
+            if (M1_line & BL_line).any():
+                print("Collision M1-BL")
+                tia_rd[0x05] |= 0x40
+            if (M1_line & PF_line).any():
+                print("Collision M1-PF")
+                tia_rd[0x05] |= 0x80
+
+            if (BL_line & PF_line).any():
+                print("Collision BL-PF")
+                tia_rd[0x06] |= 0x80
+
         total_cycles += 228
         clk_cycles %= 228
         print_debug("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
@@ -1939,25 +1983,29 @@ for i in range(19000*401):
         size   = GRP_size[nusiz0]
         dist   = GRP_dist[nusiz0]
         copies = GRP_copies[nusiz0]
-        sizeM  = 2 ** ((memory[NUSIZ0] & 0x30) >> 3)
-        sizeB  = 2 ** ((memory[CTRLPF] & 0x30) >> 3)
+        nusiz1 = memory[NUSIZ1] & 0x07
+        size1  = GRP_size[nusiz1]
+        dist1  = GRP_dist[nusiz1]
+        copies1= GRP_copies[nusiz1]
+        sizeM0 = 2 ** ((memory[NUSIZ0] >> 4) & 0x03)
+        sizeM1 = 2 ** ((memory[NUSIZ1] >> 4) & 0x03)
+        sizeB  = 2 ** ((memory[CTRLPF] >> 4) & 0x03)
         P0_GR[:,2] = 0
         P1_GR[:,2] = 0
         M0_GR[:,2] = 0
         M1_GR[:,2] = 0
         BL_GR[0] = 0
         for i in range(copies):
-            #P0_GR[i,0] = memory[GRP0]
-            #P0_GR[i,1] = P0_pos + i*dist
-            #P0_GR[i,2] = size
             M0_GR[i,0] = ((memory[ENAM0] >> 1) & 0x01) & ((~memory[RESMP0] >> 1) & 0x01)
             M0_GR[i,1] = M0_pos + i*dist
-            M0_GR[i,2] = sizeM
-            M0_GR[i,3] = dist
+            M0_GR[i,2] = sizeM0
+        for i in range(copies1):
+            M1_GR[i,0] = ((memory[ENAM1] >> 1) & 0x01) & ((~memory[RESMP1] >> 1) & 0x01)
+            M1_GR[i,1] = M1_pos + i*dist1
+            M1_GR[i,2] = sizeM1
         BL_GR[0] = ((memory[ENABL] >> 1) & 0x01)
         BL_GR[1] = BL_pos
         BL_GR[2] = sizeB
-        BL_GR[3] = 0
 
         #P0_line_old = P0_line.copy()
         P0_line[:] = 0
@@ -2012,7 +2060,7 @@ for i in range(19000*401):
                 #screen_fake = np.repeat(screen_fake, 3, axis=1)
                 #pygame.surfarray.blit_array(display, screen_fake)
                 pygame.display.flip()
-            if frame_cnt == 400:
+            if frame_cnt == 4000:
                 break
             #time.sleep(1)
         #if (line % 10) == 0:
