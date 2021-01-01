@@ -308,7 +308,7 @@ def TIA_update():
         memory[HMBL] = 0
 
     elif addr == CXCLR:
-        for i in range(len(tia_rd)):
+        for i in range(8):
             tia_rd[i] = 0
 
     elif addr == PF0:
@@ -499,8 +499,6 @@ def MEM_READ(addr):
         print_debug("R_ADDR {} PC:{}, tim_pres:{}, tim_cnt:{}".format(hex(addr), hex(PC), tim_prescaler, tim_cnt))
 
     if addr < 0x0E or (addr >= 0x30 and addr < 0x3E):
-        #if addr&0x0f > 8:
-        #    print("USED TIA {}".format(hex(addr&0x0f)))
         return tia_rd[addr & 0x0F]
 
     return memory[addr]
