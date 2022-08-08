@@ -10,42 +10,65 @@ import pygame
 import time
 import sys
 import code
+from tia import TIA
+from cpu import cpu
+
+class System:
+    def __init__(self):
+        self.clk_cycles = 0
+        self.memory = [0 for x in range(2**13)]
+
+    def dump(self):
+        print("\nSYSTEM\n")
+        print("clk_cycles {}\n".format(self.clk_cycles))
+        print("Memory\n")
+        print("TBD\n")
+        #for i in range(0,0x2C, 0x10):
+        #    print(("{:02X} "*0x10).format(*memory[i:i+0x10]))
 
 
-def show_TIA():
-    print("\nTIA 0x00-0x2C")
-    print("-----------------------------------------------")
-    for i in range(0,0x2C, 0x10):
-        print(("{:02X} "*0x10).format(*memory[i:i+0x10]))
 
-def show_RAM():
-    print("\nRAM 0x80-0xff")
-    print("-----------------------------------------------")
-    for i in range(0x80,0x100, 0x10):
-        print(("{:02X} "*0x10).format(*memory[i:i+0x10]))
+#def memoryMap(addr):
+#    ''' There are mirrors for several memory areas
+#        I.e.: 8K (max adderesable space) mirrored at 0x0000, 0x2000, ..., 0xE000
+#
+#        ROM:   xxx1 NNNN NNNN NNNN
+#               Mirrors: 0x1000, 0x3000, ..., 0xF000
+#
+#        TIA:   xxx0 xxxx 0xNN NNNN
+#               MIrrors: 0x0000, 0x0040, 0x0100, 0x0140, ..., 0x0F00, 0x0F40
+#                  14 read-only registers mirrored 4 times inside each 64 address space
+#                  45 write-only registers
+#
+#        RIOT:  xxx0 xxMx 1NNN NNNN
+#               M is mode (0: RAM, 1: I/O+Timer)
+#               Mirrors: RAM: 0x0080, 0x0180, 0x0480, 0x0580, ..., 0x0C80, 0x0D80
+#                        I/O: 0x0280, 0x0380, 0x0680, 0x0780, ..., 0x0E80, 0x0F80
+#    ''' 
+#
+#    if addr & 0x1000:
+#        # ROM: 0x1000 - 0x1FFF
+#        physical_addr = addr & 0x1FFF
+#    else:
+#        if addr & 0x80:
+#            # RIOT address space
+#            if addr & 0x200:
+#                # IO: 0x280 - 0x2FF
+#                physical_addr = addr & 0x02FF
+#            else:
+#                # RAM: 0x80 - 0xFF
+#                physical_addr = addr & 0x00FF
+#        else:
+#            # TIA address space: 0x00 - 0x3F
+#            physical_addr = addr & 0x003F
+#
+#    return physical_addr
 
-def show_Registers():
-    print("\nCPU registers")
-    print("-----------------------------------------------")
-    print("A:0x{:02X}, X:0x{:02X}, Y:0x{:02X}". format(A,X,Y))
-    print("N:{}, V:{}, Z:{}, C:{}". format(N,V,Z,C))
-    print("PC:0x{:04X}, SP:0x{:02X}".format(PC, SP))
-
-def show_cycles():
-    print("\nCycles")
-    print("-----------------------------------------------")
-    print("CPU cycles: {}".format(clk_cycles/3))
-    print("CLK cycles: {}".format(clk_cycles))
-
-def show_All():
-    show_RAM()
-    show_TIA()
-    show_Registers()
-    show_cycles()
 
 def print_debug(text):
     pass
     #print(text)
+
 #
 # ATARI 2600 core
 #
@@ -54,156 +77,34 @@ A = X = Y = 0                      # Registers
 PC = 0                             # Program counter
 SP = 0                             # Stack pointer
 N = V = B = D = I = Z = C = False  # Status flags
-memory = [0 for x in range(2**13)] # Memory map
-tia_rd = [0 for x in range(0xff)]  # TIA (READ) Memory map
-clk_cycles = 0                     # Atari clock cycles
+
 page_crossed = 0
 frame_cnt = 0
 total_cycles = 0
-line = 0
-vsync = 0
-wsync = 0
-rsync = 0
-screen = np.zeros((160, 192+20, 3), dtype=np.uint8)
-colubk = [[0,0]] # List of background colour changes during the line
-# Playfield (40 bits)
-pf0_l = pf0_r = pf1_l = pf1_r = pf2_l = pf2_r = 0
-pf_mirror = 0
-# Sprites
-P0_pos = P1_pos = M0_pos = M1_pos = BL_pos = 0
-P0_GR = np.zeros((3,3), dtype=np.uint8)
-P1_GR = np.zeros((3,3), dtype=np.uint8)
-M0_GR = np.zeros((3,3), dtype=np.uint8)
-M1_GR = np.zeros((3,3), dtype=np.uint8)
-BL_GR = np.zeros((3), dtype=np.uint8)
-GRP_size   = [1,  1,  1,  1,  1, 2,  1, 4]
-GRP_dist   = [0, 16, 32, 16, 64, 0, 32, 0]
-GRP_copies = [1,  2,  2,  3,  2, 1,  3, 1]
-
-dec2bin = [ [num & (0x80>>i) for i in range(8)] for num in range(256)]
-P0_line = np.zeros((160,), dtype=np.bool)
-P1_line = np.zeros((160,), dtype=np.bool)
-M0_line = np.zeros((160,), dtype=np.bool)
-M1_line = np.zeros((160,), dtype=np.bool)
-BL_line = np.zeros((160,), dtype=np.bool)
-PF_line = np.zeros((160,), dtype=np.bool)
-#PF0_line = np.zeros((80,), dtype=np.bool) # PF (left PF)
-#PF1_line = np.zeros((80,), dtype=np.bool) # PF (right PF)
-
-pf0ToBin = np.array([[ j&(0x01<<i) for i in range(4)] for j in range(16)]).repeat(4, axis=1)
-pf1ToBin = np.array([[ j&(0x80>>i) for i in range(8)] for j in range(256)]).repeat(4, axis=1)
-pf2ToBin = np.array([[ j&(0x01<<i) for i in range(8)] for j in range(256)]).repeat(4, axis=1)
-pf0ToBinR = [ vec[::-1] for vec in pf0ToBin]
-pf1ToBinR = [ vec[::-1] for vec in pf1ToBin]
-pf2ToBinR = [ vec[::-1] for vec in pf2ToBin]
-
-#
+##
 TIA_UPDATE = False
 tia_addr  = 0
 tia_value = 0
-
-#RIOT (PIA 6532)
+#
+##RIOT (PIA 6532)
 RIOT_UPDATE = False
 riot_addr  = 0
 riot_value = 0
 tim_prescaler = 1024 # default value
 tim_cnt       = 15   # default value
-
-
+#
+#
 MAX_MEM_ADDR = 0x1fff # 8KB-1 (13-bits)
-
-
-# NTSC
-NTSC_colorMap = [0x000000, 0x404040, 0x6C6C6C, 0x909090, 0xB0B0B0, 0xC8C8C8, 0xDCDCDC, 0xECECEC, 
-                 0x444400, 0x646410, 0x848424, 0xA0A034, 0xB8B840, 0xD0D050, 0xE8E85C, 0xFCFC68,
-                 0x702800, 0x844414, 0x985C28, 0xAC783C, 0xBC8C4C, 0xCCA05C, 0xDCB468, 0xECC878,
-                 0x841800, 0x983418, 0xAC5030, 0xC06848, 0xD0805C, 0xE09470, 0xECA880, 0xFCBC94,
-                 0x880000, 0x9C2020, 0xB03C3C, 0xC05858, 0xD07070, 0xE08888, 0xECA0A0, 0xFCB4B4,
-                 0x78005C, 0x8C2074, 0xA03C88, 0xB0589C, 0xC070B0, 0xD084C0, 0xDC9CD0, 0xECB0E0,
-                 0x480078, 0x602090, 0x783CA4, 0x8C58B8, 0xA070CC, 0xB484DC, 0xC49CEC, 0xD4B0FC,
-                 0x140084, 0x302098, 0x4C3CAC, 0x6858C0, 0x7C70D0, 0x9488E0, 0xA8A0EC, 0xBCB4FC,
-                 0x000088, 0x1C209C, 0x3840B0, 0x505CC0, 0x6874D0, 0x7C8CE0, 0x90A4EC, 0xA4B8FC,
-                 0x00187C, 0x1C3890, 0x3854A8, 0x5070BC, 0x6888CC, 0x7C9CDC, 0x90B4EC, 0xA4C8FC,
-                 0x002C5C, 0x1C4C78, 0x386890, 0x5084AC, 0x689CC0, 0x7CB4D4, 0x90CCE8, 0xA4E0FC,
-                 0x003C2C, 0x1C5C48, 0x387C64, 0x509C80, 0x68B494, 0x7CD0AC, 0x90E4C0, 0xA4FCD4,
-                 0x003C2C, 0x1C5C48, 0x387C64, 0x509C80, 0x68B494, 0x7CD0AC, 0x90E4C0, 0xA4FCD4,
-                 0x003C00, 0x205C20, 0x407C40, 0x5C9C5C, 0x74B474, 0x8CD08C, 0xA4E4A4, 0xB8FCB8,
-                 0x143800, 0x345C1C, 0x507C38, 0x6C9850, 0x84B468, 0x9CCC7C, 0xB4E490, 0xC8FCA4,
-                 0x2C3000, 0x4C501C, 0x687034, 0x848C4C, 0x9CA864, 0xB4C078, 0xCCD488, 0xE0EC9C,
-                 0x442800, 0x644818, 0x846830, 0xA08444, 0xB89C58, 0xD0B46C, 0xE8CC7C, 0xFCE08C ]
-
-colorMap = [[color>>16, (color>>8)&0xff, color&0xff] for color in NTSC_colorMap]
-#print colorMap
-
 #
-# TIA registers
 #
-# Only Write
-VSYNC  = 0x00 #  0000 00x0   Vertical Sync Set-Clear
-VBLANK = 0x01 #  xx00 00x0   Vertical Blank Set-Clear
-WSYNC  = 0x02 #  ---- ----   Wait for Horizontal Blank
-RSYNC  = 0x03 #  ---- ----   Reset Horizontal Sync Counter
-NUSIZ0 = 0x04 #  00xx 0xxx   Number-Size player/missle 0
-NUSIZ1 = 0x05 #  00xx 0xxx   Number-Size player/missle 1
-COLUP0 = 0x06 #  xxxx xxx0   Color-Luminance Player 0
-COLUP1 = 0x07 #  xxxx xxx0   Color-Luminance Player 1
-COLUPF = 0x08 #  xxxx xxx0   Color-Luminance Playfield
-COLUBK = 0x09 #  xxxx xxx0   Color-Luminance Background
-CTRLPF = 0x0A #  00xx 0xxx   Control Playfield, Ball, Collisions
-REFP0  = 0x0B #  0000 x000   Reflection Player 0
-REFP1  = 0x0C #  0000 x000   Reflection Player 1
-PF0    = 0x0D #  xxxx 0000   Playfield Register Byte 0
-PF1    = 0x0E #  xxxx xxxx   Playfield Register Byte 1
-PF2    = 0x0F #  xxxx xxxx   Playfield Register Byte 2
-RESP0  = 0x10 #  ---- ----   Reset Player 0
-RESP1  = 0x11 #  ---- ----   Reset Player 1
-RESM0  = 0x12 #  ---- ----   Reset Missle 0
-RESM1  = 0x13 #  ---- ----   Reset Missle 1
-RESBL  = 0x14 #  ---- ----   Reset Ball
-AUDC0  = 0x15 #  0000 xxxx   Audio Control 0
-AUDC1  = 0x16 #  0000 xxxx   Audio Control 1
-AUDF0  = 0x17 #  000x xxxx   Audio Frequency 0
-AUDF1  = 0x18 #  000x xxxx   Audio Frequency 1
-AUDV0  = 0x19 #  0000 xxxx   Audio Volume 0
-AUDV1  = 0x1A #  0000 xxxx   Audio Volume 1
-GRP0   = 0x1B #  xxxx xxxx   Graphics Register Player 0
-GRP1   = 0x1C #  xxxx xxxx   Graphics Register Player 1
-ENAM0  = 0x1D #  0000 00x0   Graphics Enable Missle 0
-ENAM1  = 0x1E #  0000 00x0   Graphics Enable Missle 1
-ENABL  = 0x1F #  0000 00x0   Graphics Enable Ball
-HMP0   = 0x20 #  xxxx 0000   Horizontal Motion Player 0
-HMP1   = 0x21 #  xxxx 0000   Horizontal Motion Player 1
-HMM0   = 0x22 #  xxxx 0000   Horizontal Motion Missle 0
-HMM1   = 0x23 #  xxxx 0000   Horizontal Motion Missle 1
-HMBL   = 0x24 #  xxxx 0000   Horizontal Motion Ball
-VDELP0 = 0x25 #  0000 000x   Vertical Delay Player 0
-VDELP1 = 0x26 #  0000 000x   Vertical Delay Player 1
-VDELBL = 0x27 #  0000 000x   Vertical Delay Ball
-RESMP0 = 0x28 #  0000 00x0   Reset Missle 0 to Player 0
-RESMP1 = 0x29 #  0000 00x0   Reset Missle 1 to Player 1
-HMOVE  = 0x2A #  ---- ----   Apply Horizontal Motion
-HMCLR  = 0x2B #  ---- ----   Clear Horizontal Move Registers
-CXCLR  = 0x2C #  ---- ----   Clear Collision Latches
 
-# Only read
-CXM0P  = 0x00 #  xx00 0000   Read Collision  M0-P1   M0-P0
-CXM1P  = 0x01 #  xx00 0000                   M1-P0   M1-P1
-CXP0FB = 0x02 #  xx00 0000                   P0-PF   P0-BL
-CXP1FB = 0x03 #  xx00 0000                   P1-PF   P1-BL
-CXM0FB = 0x04 #  xx00 0000                   M0-PF   M0-BL
-CXM1FB = 0x05 #  xx00 0000                   M1-PF   M1-BL
-CXBLPF = 0x06 #  x000 0000                   BL-PF   -----
-CXPPMM = 0x07 #  xx00 0000                   P0-P1   M0-M1
-INPT0  = 0x08 #  x000 0000   Read Pot Port 0
-INPT1  = 0x09 #  x000 0000   Read Pot Port 1
-INPT2  = 0x0A #  x000 0000   Read Pot Port 2
-INPT3  = 0x0B #  x000 0000   Read Pot Port 3
-INPT4  = 0x0C #  x000 0000   Read Input (Trigger) 0
-INPT5  = 0x0D #  x000 0000   Read Input (Trigger) 1
-
+# NEWWWW
+system = System()
+tia = TIA(system)
+#END NEW
 
 def RIOT_update():
-    global memory
+    global system
     global tim_cnt,tim_prescaler
     
     addr  = riot_addr
@@ -211,262 +112,50 @@ def RIOT_update():
 
     # Trigger registers (ignore value)
     if addr == 0x294:
-        memory[0x284] = value
+        system.memory[0x284] = value
         tim_prescaler =1 
         tim_cnt = 1
-        print_debug("TIMER 1: {}, clk_cycles: {}".format(value, clk_cycles/3))
+        print_debug("TIMER 1: {}, clk_cycles: {}".format(value, system.clk_cycles/3))
     elif addr == 0x295:
-        memory[0x284] = value
+        system.memory[0x284] = value
         tim_prescaler =8 
         tim_cnt = 1
-        print_debug("TIMER 8: {}, clk_cycles: {}".format(value, clk_cycles/3))
+        print_debug("TIMER 8: {}, clk_cycles: {}".format(value, system.clk_cycles/3))
     elif addr == 0x296:
-        memory[0x284] = value
+        system.memory[0x284] = value
         tim_prescaler = 64
         tim_cnt = 1
-        print_debug("TIMER 64: {}, clk_cycles: {}".format(value, clk_cycles/3))
+        print_debug("TIMER 64: {}, clk_cycles: {}".format(value, system.clk_cycles/3))
     elif addr == 0x297:
-        memory[0x284] = value
+        system.memory[0x284] = value
         tim_prescaler =1024 
         tim_cnt = 1
-        print_debug("TIMER 1024: {}, clk_cycles: {}".format(value, clk_cycles/3))
+        print_debug("TIMER 1024: {}, clk_cycles: {}".format(value, system.clk_cycles/3))
 
     # elif ...
-
-def TIA_update():
-    global memory
-    global ncycles
-    global P0_pos, P1_pos, M0_pos, M1_pos, BL_pos
-    
-    addr  = tia_addr
-    value = tia_value
-
-    # Trigger registers (ignore value)
-    if addr == WSYNC:
-        #global clk_cycles
-        global wsync
-
-        #clk_cycles = 228 # NTSC
-        wsync = 1
-        print_debug('WSYNC line {}, PC {}'.format(line, hex(PC)))
-
-    if addr == RSYNC:
-        global rsync
-
-        rsync = 1
-        print_debug('RSYNC')
-
-    elif addr == VSYNC:
-        #global  line
-        global  vsync
-        print_debug("VSYNC val:{}, clk_cycles:{}, total_cycles:{}, line:{}".format(value, clk_cycles, total_cycles, line))
-        if value != 0:
-            vsync = 1
-        else: # value == 0
-            if vsync == 1:
-                vsync = 2
-
-    elif addr == RSYNC:
-        pass
-
-    elif addr == RESP0:
-        # Single scalar, so assumng a single update during the line
-        P0_pos = clk_cycles - 68 + 5 if clk_cycles >= 68 else 1
-        print_debug("RESP0 pos:{}, line:{}, frame_cnt:{}".format(P0_pos, line, frame_cnt))
-
-    elif addr == RESP1:
-        P1_pos = clk_cycles - 68 + 5 if clk_cycles >= 68 else 1
-        print_debug("RESP1 pos:{}".format(P0_pos))
-
-    elif addr == RESM0:
-        M0_pos = clk_cycles - 68 if clk_cycles >= 68 else 1
-
-    elif addr == RESM1:
-        M1_pos = clk_cycles - 68 if clk_cycles >= 68 else 1
-
-    elif addr == RESBL:
-        BL_pos = clk_cycles - 68 if clk_cycles >= 68 else 1
-
-    elif addr == HMOVE:
-        pass
-        tmp = memory[HMP0] >> 4
-        P0_pos -= tmp if tmp < 8 else (tmp - 16)   # -8 ... +7
-        tmp = memory[HMP1] >> 4
-        P1_pos -= tmp if tmp < 8 else (tmp - 16)
-        tmp = memory[HMM0] >> 4
-        M0_pos -= tmp if tmp < 8 else (tmp - 16)
-        tmp = memory[HMM1] >> 4
-        M1_pos -= tmp if tmp < 8 else (tmp - 16)
-        tmp = memory[HMBL] >> 4
-        BL_pos -= tmp if tmp < 8 else (tmp - 16)
-
-    elif addr == HMCLR:
-        memory[HMP0] = 0
-        memory[HMP1] = 0
-        memory[HMM0] = 0
-        memory[HMM1] = 0
-        memory[HMBL] = 0
-
-    elif addr == CXCLR:
-        for i in range(8):
-            tia_rd[i] = 0
-
-    elif addr == PF0:
-        global pf0_l, pf0_r
-        if clk_cycles < 48:
-            pf0_l = value
-            pf0_r = value
-        elif clk_cycles < 148:
-            pf0_r = value
-            #TODO>review... upto 228
-
-    elif addr == PF1:
-        global pf1_l, pf1_r
-        if clk_cycles < 84:
-            pf1_l = value
-            pf1_r = value
-        elif clk_cycles < 164:
-            pf1_r = value
-
-    elif addr == PF2:
-        global pf2_l, pf2_r
-        if clk_cycles < 116:
-            pf2_l = value
-            pf2_r = value
-        elif clk_cycles < 196:
-            pf2_r = value
-
-    elif addr == CTRLPF:
-        if clk_cycles < 148: # Before half-line
-            pf_mirror = 1 if value & 0x01 else 0
-
-    elif addr == COLUBK:
-        global colubk
-        #cycles = clk_cycles - 68 if clk_cycles >= 68 else 0
-        #colubk.append([cycles, value])
-        if clk_cycles >= 68:
-            colubk.append([clk_cycles - 68, value])
-        else:
-            colubk[0] = [0, value]
-        #print('COLUBK', value, line)
-
-    elif addr == COLUPF:
-        pass
-        #print('COLUPF', value, line)
-    elif addr == COLUP0:
-        pass
-        #print('COLUP0', value, line)
-        
-    elif addr == COLUP1:
-        pass
-        #print('COLUP1', value, line)
-
-    elif addr == GRP0:
-        pass
-        # Add color
-        nusiz0 = memory[NUSIZ0] & 0x07
-        size   = GRP_size[nusiz0]
-        dist   = GRP_dist[nusiz0]
-        copies = GRP_copies[nusiz0]
-        
-        grp = memory[GRP0]
-
-        if copies == 1:
-            if clk_cycles < (P0_pos + 68):
-                P0_GR[0,:] = [grp, P0_pos, size]
-        elif copies == 2:
-            if clk_cycles < (P0_pos + 68):
-                P0_GR[0,:] = [grp, P0_pos, size]
-            elif clk_cycles < (P0_pos + 68 + dist):
-                P0_GR[1,:] = [grp, pos, size]
-        elif copies == 3:
-            if clk_cycles < (P0_pos + 68):
-                P0_GR[0,:] = [grp, P0_pos, size]
-            elif clk_cycles < (P0_pos + 68 + dist):
-                P0_GR[1,:] = [grp, pos, size]
-            elif clk_cycles < (P0_pos + 68 + 2*dist):
-                P0_GR[2,:] = [grp, pos, size]
-
-
-        #grp_wr = True
-        #grp = memory[GRP0]
-        #if grp != -1:
-        #    nusiz0 = memory[NUSIZ0] & 0x07
-        #    size   = GRP_size[nusiz0]
-        #    dist   = GRP_dist[nusiz0]
-        #    copies = GRP_copies[nusiz0]
-        #    data = np.repeat(dec2bin[grp], size)
-        #    if memory[REFP0] & 0x08:
-        #        data = data[::-1]
-
-        #    if clk_cycles < (P0_pos + 68):
-        #        P0_line[:] = 0
-        #        P0_line[P0_pos : P0_pos+(8*size)] = data
-
-        #    if copies>1:
-        #        pos = P0_pos + dist
-        #        if clk_cycles < (pos + 68):
-        #            P0_line[pos : pos+(8*size)] = data
-
-        #    if copies>2:
-        #        pos = P0_pos + 2*dist
-        #        if clk_cycles < (pos + 68):
-        #            P0_line[pos : pos+(8*size)] = data
-
-    elif addr == GRP1:
-        pass
-        #print('GRP1', value, line, frame_cnt, clk_cycles/3, memory[0xb3], memory[0xa6])
-        nusiz1 = memory[NUSIZ1] & 0x07
-        size   = GRP_size[nusiz1]
-        dist   = GRP_dist[nusiz1]
-        copies = GRP_copies[nusiz1]
-        
-        grp = value
-
-        if copies == 1:
-            if clk_cycles < (P1_pos + 68):
-                P1_GR[0,:] = [grp, P1_pos, size]
-        elif copies == 2:
-            if clk_cycles < (P1_pos + 68):
-                P1_GR[0,:] = [grp, P1_pos, size]
-            elif clk_cycles < (P1_pos + 68 + dist):
-                P1_GR[1,:] = [grp, pos, size]
-        elif copies == 3:
-            if clk_cycles < (P1_pos + 68):
-                P1_GR[0,:] = [grp, P1_pos, size]
-            elif clk_cycles < (P1_pos + 68 + dist):
-                P1_GR[1,:] = [grp, pos, size]
-            elif clk_cycles < (P1_pos + 68 + 2*dist):
-                P1_GR[2,:] = [grp, pos, size]
-
-    elif addr == RESMP0:
-        if (value >> 1) & 0x01:
-            M0_pos = P0_pos + 4 # Middle of the P0
-
-    elif addr == RESMP1:
-        if (value >> 1) & 0x01:
-            M1_pos = P1_pos + 4 # Middle of the P1
-
-    #elif addr == NUSIZ0:
-    #    print("NUSIZ0", value)
-
-    #elif addr == NUSIZ1:
-    #    print("NUSIZ1", value)
 
 
 # Memory bus operation
 def MEM_WRITE(addr, value):
-    global memory
+    global system
+    #global memory
+    global mem_write
+
+    mem_write = 1
 
     addr &= MAX_MEM_ADDR
 
-    if addr != 0x282: # Port B is hardwired as input. Ignore write operations on it
-        memory[addr] = value
-    
     if addr >= 0x40 and addr < 0x80:
         print_debug("ZERO PAGE 0x{:02X}".format(addr))
         addr -= 0x40
         #sys.exit()
+
+    if addr != 0x282: # Port B is hardwired as input. Ignore write operations on it
+        system.memory[addr] = value
+    
+    #if addr > 0x30 and addr < 0x3f:
+    #    print( 'WTF' )
+    #    #sys.exit()
 
     # TIA register (0x00 - 0x80)
     if addr < 0x80:
@@ -478,7 +167,7 @@ def MEM_WRITE(addr, value):
         if addr > 0x3f:
             print_debug('W_ADDR {}'.format(hex(addr)))
 
-    if addr > 0x280:
+    if addr >= 0x280:
         global RIOT_UPDATE, riot_addr, riot_value
         RIOT_UPDATE = True
         riot_addr  = addr
@@ -487,6 +176,10 @@ def MEM_WRITE(addr, value):
 
             
 def MEM_READ(addr):
+
+    global mem_read
+
+    mem_read = 1
 
     addr &= MAX_MEM_ADDR
 
@@ -499,9 +192,10 @@ def MEM_READ(addr):
         print_debug("R_ADDR {} PC:{}, tim_pres:{}, tim_cnt:{}".format(hex(addr), hex(PC), tim_prescaler, tim_cnt))
 
     if addr < 0x0E or (addr >= 0x30 and addr < 0x3E):
-        return tia_rd[addr & 0x0F]
+        addr = (addr & 0x0F) + 0x100 # fake address for read-only TIA registers
+    #    return tia_rd[addr & 0x0F]
 
-    return memory[addr]
+    return system.memory[addr]
 
 
 
@@ -601,6 +295,8 @@ def MEM_WRITE_INDIRECT_Y(addr, val):
     addr = MEM_READ(addr) | (MEM_READ(addr+1)<<8)
     addr = addr + Y
     MEM_WRITE(addr, val)
+
+# END Addressing modes
 
 # Flags status byte
 def PSW_GET():
@@ -742,16 +438,17 @@ def bpl_(unused):
 
 # BRK
 def brk_(unused):
-    global memory
+    global system
+    #global memory
     global PC, SP
     global B
 
     B = 1
     # push PC and SP to stack
     rti_PC = PC + 1
-    memory[SP]     = rti_PC >> 8
-    memory[SP - 1] = rti_PC & 0xff
-    memory[SP - 2] = PSW_GET()
+    system.memory[SP]     = rti_PC >> 8
+    system.memory[SP - 1] = rti_PC & 0xff
+    system.memory[SP - 2] = PSW_GET()
     SP -= 3
     # PC = interrupt vector
     PC = (MEM_READ(MEM_READ_ABSOLUTE(0xfffe)) | MEM_READ(MEM_READ_ABSOLUTE(0xffff))<<8)
@@ -934,12 +631,13 @@ def jmp_(val):
 # JSR
 def jsr_(val):
     global PC, SP
-    global memory
+    global system
+    #global memory
     #print(hex(val & MAX_MEM_ADDR))
     # push PC-1 on to the stack
     PC -= 1
-    memory[SP]     = PC >> 8
-    memory[SP - 1] = PC & 0xff
+    system.memory[SP]     = PC >> 8
+    system.memory[SP - 1] = PC & 0xff
     SP -= 2
     # update PC
     PC = val
@@ -1030,18 +728,20 @@ def oraMem_(addr):
 
 def pha_(val):    
     global SP
-    global memory
+    global system
+    #global memory
 
-    memory[SP] = A
+    system.memory[SP] = A
     SP = SP - 1
 
     return 0    
 
 def php_(val):
     global SP
-    global memory
+    global system
+    #global memory
 
-    memory[SP] = PSW_GET()
+    system.memory[SP] = PSW_GET()
     SP = SP - 1
 
     return 0    
@@ -1051,7 +751,7 @@ def pla_(val):
     global Z, N
 
     SP = SP + 1
-    A = memory[SP]
+    A = system.memory[SP]
     Z = A == 0 
     N = (A & 0x80 != 0) 
 
@@ -1062,7 +762,7 @@ def plp_(val):
     global C,Z,I,D,B,V,N
 
     SP = SP + 1
-    tmp = memory[SP]
+    tmp = system.memory[SP]
     PSW_SET(tmp)
 
     return 0
@@ -1124,8 +824,8 @@ def rti_(unused):
     global PC, SP
     global C,Z,I,D,B,V,N
 
-    PSW_SET(memory[SP + 1])
-    PC = memory[SP + 2] | (memory[SP + 3] << 8)
+    PSW_SET(system.memory[SP + 1])
+    PC = system.memory[SP + 2] | (system.memory[SP + 3] << 8)
     SP += 3
 
     return 0
@@ -1134,7 +834,7 @@ def rti_(unused):
 def rts_(unused):
     global PC, SP
 
-    PC = (memory[SP + 1] | (memory[SP + 2] << 8)) + 1
+    PC = (system.memory[SP + 1] | (system.memory[SP + 2] << 8)) + 1
     SP += 2
 
     return 0
@@ -1266,6 +966,7 @@ def tya_(unused):
 
     return 0    
 
+# End pcode
 
 
 # opcodes table
@@ -1535,700 +1236,139 @@ opcode_table[0x9a] = [txs_,      NONE,                  1,     2,      0]
 # TYA                                                   
 opcode_table[0x98] = [tya_,      NONE,                  1,     2,      0]
 
-
-def draw_line():
-    '''
-    Instead of updating display in real time, we'll keep track of any operation
-    done over TIA registers and then we'll update the whole line at once
-    '''
-    
-    line_visible = line - 40
-    screen_line = screen[:, line_visible]
-    
-    # Update background
-    s2 = colubk[0][0]
-    for i in range(len(colubk) - 1):
-        s1 = s2
-        s2 = colubk[i+1][0]
-        color = colorMap[colubk[i][1]>>1]
-        screen_line[s1:s2] = color
-    color = colorMap[(colubk[-1][1]>>1)]
-    screen_line[s2:160] = color
-    
-    # Priority depends on CTRLPF.D2: assume it is 0 at this moment
-    # PF color depends on CTRLPF D1: assume it is 0 at this moment (so use COLUPF)
-    # PF reflection depends on CTRLPF D0: assume it is 0 at this moment (so no mirror)
-    
-    # Update PlayFields
-    # Simplification: assume color changes, at most, once each line 
-    if memory[CTRLPF] & 0x02:
-        PF_color1 = colorMap[memory[COLUP0]>>1]
-        PF_color2 = colorMap[memory[COLUP1]>>1]
-    else:
-        PF_color1 = colorMap[memory[COLUPF]>>1]
-        PF_color2 = PF_color1
-
-    a1 = time.clock()
-
-    # left-side display
-    #if pf0_l & 0x10: 
-    #    screen_line[0:4]   = PF_color1
-    #if pf0_l & 0x20: 
-    #    screen_line[4:8]   = PF_color1
-    #if pf0_l & 0x40: 
-    #    screen_line[8:12]  = PF_color1
-    #if pf0_l & 0x80: 
-    #    screen_line[12:16] = PF_color1
-    #if pf1_l & 0x80:
-    #    screen_line[16:20] = PF_color1
-    #if pf1_l & 0x40:
-    #    screen_line[20:24] = PF_color1
-    #if pf1_l & 0x20:
-    #    screen_line[24:28] = PF_color1
-    #if pf1_l & 0x10:
-    #    screen_line[28:32] = PF_color1
-    #if pf1_l & 0x08:
-    #    screen_line[32:36] = PF_color1
-    #if pf1_l & 0x04:
-    #    screen_line[36:40] = PF_color1
-    #if pf1_l & 0x02:
-    #    screen_line[40:44] = PF_color1
-    #if pf1_l & 0x01:
-    #    screen_line[44:48] = PF_color1
-    #if pf2_l & 0x01:
-    #    screen_line[48:52] = PF_color1
-    #if pf2_l & 0x02:
-    #    screen_line[52:56] = PF_color1
-    #if pf2_l & 0x04:
-    #    screen_line[56:60] = PF_color1
-    #if pf2_l & 0x08:
-    #    screen_line[60:64] = PF_color1
-    #if pf2_l & 0x10:
-    #    screen_line[64:68] = PF_color1
-    #if pf2_l & 0x20:
-    #    screen_line[68:72] = PF_color1
-    #if pf2_l & 0x40:
-    #    screen_line[72:76] = PF_color1
-    #if pf2_l & 0x80:
-    #    screen_line[76:80]= PF_color1
-
-    ## right-side
-    #if not pf_mirror:
-    #    if pf0_r & 0x10: 
-    #        screen_line[80:84]   = PF_color2
-    #    if pf0_r & 0x20: 
-    #        screen_line[84:88]   = PF_color2
-    #    if pf0_r & 0x40: 
-    #        screen_line[88:92]   = PF_color2
-    #    if pf0_r & 0x80: 
-    #        screen_line[92:96]   = PF_color2
-    #    if pf1_r & 0x80: 
-    #        screen_line[96:100]  = PF_color2
-    #    if pf1_r & 0x40: 
-    #        screen_line[100:104] = PF_color2
-    #    if pf1_r & 0x20: 
-    #        screen_line[104:108] = PF_color2
-    #    if pf1_r & 0x10: 
-    #        screen_line[108:112] = PF_color2
-    #    if pf1_r & 0x08: 
-    #        screen_line[112:116] = PF_color2
-    #    if pf1_r & 0x04: 
-    #        screen_line[116:120] = PF_color2
-    #    if pf1_r & 0x02: 
-    #        screen_line[120:124] = PF_color2
-    #    if pf1_r & 0x01: 
-    #        screen_line[124:128] = PF_color2
-    #    if pf2_r & 0x01: 
-    #        screen_line[128:132] = PF_color2
-    #    if pf2_r & 0x02: 
-    #        screen_line[132:136] = PF_color2
-    #    if pf2_r & 0x04: 
-    #        screen_line[136:140] = PF_color2
-    #    if pf2_r & 0x08: 
-    #        screen_line[140:144] = PF_color2
-    #    if pf2_r & 0x10: 
-    #        screen_line[144:148] = PF_color2
-    #    if pf2_r & 0x20: 
-    #        screen_line[148:152] = PF_color2
-    #    if pf2_r & 0x40: 
-    #        screen_line[152:156] = PF_color2
-    #    if pf2_r & 0x80: 
-    #        screen_line[156:160] = PF_color2
-    #else:
-    #    if pf2_r & 0x80: 
-    #        screen_line[80:84]   = PF_color2
-    #    if pf2_r & 0x40: 
-    #        screen_line[84:88]   = PF_color2
-    #    if pf2_r & 0x20: 
-    #        screen_line[88:92]   = PF_color2
-    #    if pf2_r & 0x10: 
-    #        screen_line[92:96]   = PF_color2
-    #    if pf2_r & 0x08: 
-    #        screen_line[96:100]  = PF_color2
-    #    if pf2_r & 0x04: 
-    #        screen_line[100:104] = PF_color2
-    #    if pf2_r & 0x02: 
-    #        screen_line[104:108] = PF_color2
-    #    if pf2_r & 0x01: 
-    #        screen_line[108:112] = PF_color2
-    #    if pf1_r & 0x01: 
-    #        screen_line[112:116] = PF_color2
-    #    if pf1_r & 0x02: 
-    #        screen_line[116:120] = PF_color2
-    #    if pf1_r & 0x04: 
-    #        screen_line[120:124] = PF_color2
-    #    if pf1_r & 0x08: 
-    #        screen_line[124:128] = PF_color2
-    #    if pf1_r & 0x10: 
-    #        screen_line[128:132] = PF_color2
-    #    if pf1_r & 0x20: 
-    #        screen_line[132:136] = PF_color2
-    #    if pf1_r & 0x40: 
-    #        screen_line[136:140] = PF_color2
-    #    if pf1_r & 0x80: 
-    #        screen_line[140:144] = PF_color2
-    #    if pf0_r & 0x80: 
-    #        screen_line[144:148] = PF_color2
-    #    if pf0_r & 0x40: 
-    #        screen_line[148:152] = PF_color2
-    #    if pf0_r & 0x20: 
-    #        screen_line[152:156] = PF_color2
-    #    if pf0_r & 0x10: 
-    #        screen_line[156:160] = PF_color2
+# End opcodes table
 
 
-    #k=0
-    #for j in range(8):
-    #    if pf0_l & (0x10<<j) and j < 4: 
-    #        screen_line[k:k+4]     = PF_color1
-    #    if pf1_l & (0x80>>j): 
-    #        screen_line[k+16:k+20] = PF_color1
-    #    if pf2_l & (0x01<<j): 
-    #        screen_line[k+48:k+52] = PF_color1
-    #    if not pf_mirror:
-    #        if pf0_r & (0x10<<j) and j < 4: 
-    #            screen_line[k+80:k+84]   = PF_color2 # Assuming no mirror
-    #        if pf1_r & (0x80>>j): 
-    #            screen_line[k+96:k+100]  = PF_color2
-    #        if pf2_r & (0x01<<j): 
-    #            screen_line[k+128:k+132] = PF_color2
-    #    else:
-    #        if pf2_r & (0x80>>j): 
-    #            screen_line[k+80:k+84]   = PF_color2 # Assuming mirror
-    #        if pf1_r & (0x01<<j): 
-    #            screen_line[k+112:k+116] = PF_color2
-    #        if pf0_r & (0x80>>j) and j < 4: 
-    #            screen_line[k+144:k+148] = PF_color2 # Assuming no mirror
-    #    k += 4
-
-    a2 = time.clock()
-    #print(a2-a1)
-
-    # Update PplayField
-    #TODO: actually 0 is a valid color... it should be used a different code to indicate pixel enabled
-    screen_line[0:80][PF0_line>0] = PF_color1
-    screen_line[80:][PF1_line>0] = PF_color2
-
-    # Update GPs and missiles
-    size = 1
-    P0_color = colorMap[memory[COLUP0]>>1] # assuming no change in color during the first half-line
-    P1_color = colorMap[memory[COLUP1]>>1] # idem for second half-line
-
-    # Update Players 0 and 1
-    screen_line[P0_line>0] = P0_color
-    screen_line[P1_line>0] = P1_color
-
-    # Update Missiles
-    screen_line[M0_line>0] = P0_color
-    screen_line[M1_line>0] = P1_color
-
-    # Update Ball
-    BL_color = colorMap[memory[COLUPF]>>1]
-    screen_line[BL_line>0] = BL_color
-
-
-import time
+cpu = cpu(system)
 
 
 #f = open("Indy500.a26", "rb")
 #f = open("3_Bars_Background.bin", "rb")
-#with open("prueba.bin", "rb") as f:
-#with open("../ROMS/pace Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
+#with open("../kernel_01.bin", "rb") as f:
+#with open("../ROMS/Space Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
 with open("../prueba.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
-    memory[0x1000 + i] = ord(byte)  # For python2
-    memory[0x1800 + i] = ord(byte)
-    #memory[0x1000 + i] = byte # For python3
+    #memory[0x1000 + i] = ord(byte)  # For python2
+    #memory[0x1800 + i] = ord(byte)
+    system.memory[0x1000 + i] = byte # For python3
     #memory[0x1800 + i] = byte
 
-pygame.init()
-# Scaling by is faster than using pygame.SCALED flag
-display = pygame.display.set_mode([320*3,(192+20)*3])
-surface = pygame.Surface((160, 192+20))
 
 # Init input registers
-memory[0x280] = 0xff
-memory[0x281] = 0x00
-memory[0x282] = 0x2f
-memory[0x283] = 0x00 # Actuallty hardwired as input
-tia_rd[0x08]  = 0x80
-tia_rd[0x09]  = 0x80
-tia_rd[0x0a]  = 0x80
-tia_rd[0x0b]  = 0x80
-tia_rd[0x0c]  = 0x80
-tia_rd[0x0d]  = 0x80
+system.memory[0x280] = 0xff
+system.memory[0x281] = 0x00
+system.memory[0x282] = 0x2f
+system.memory[0x283] = 0x00 # Actually hardwired as input
+system.memory[0x108] = 0x80
+system.memory[0x109] = 0x80
+system.memory[0x10a] = 0x80
+system.memory[0x10b] = 0x80
+system.memory[0x10c] = 0x80
+system.memory[0x10d] = 0x80
+
+mem_write = 0
+mem_read = 0
 
 PC = 0xF000
+cpu.PC = 0xF000
 ss = 0
 t1 = time.time()
 #for i in range(1100):
 for i in range(19000*401):
-    page_crossed = 0
-    
+#    page_crossed = 0
+#
+#    mem_write = 0
+#    mem_read = 0
+#
+#    # Get the next opcode
+#    print_debug("PC {}".format(hex(PC)))
+#    opcode = MEM_READ(PC)
+#    #print hex(opcode)
+#    opFunc, opMode, nbytes, ncycles, add_page_crossed = opcode_table[opcode]
+#    
+#    if opFunc == unknown:
+#        print("Unknown opcode: {}".format(hex(opcode)))
+#        break
+#
+#    # Get the operand (if appropriate)
+#    if nbytes == 2  : addr = opMode(MEM_READ(PC+1))
+#    elif nbytes == 3: addr = opMode(MEM_READ(PC+1) + (MEM_READ(PC+2)<<8))
+#    else            : addr = 0
+#
+#    # Update PC
+#    PC += nbytes
+#
+#    # Execute opcode
+#    extra_cycles  = opFunc(addr)
+#    extra_cycles += add_page_crossed * page_crossed
+#
+#    # Update num cycles
+#    system.clk_cycles = system.clk_cycles + (ncycles + extra_cycles) * 3
+#
+#    discount = ncycles + extra_cycles
 
-    # Get the next opcode
-    print_debug("PC {}".format(hex(PC)))
-    opcode = MEM_READ(PC)
-    #print hex(opcode)
-    opFunc, opMode, nbytes, ncycles, add_page_crossed = opcode_table[opcode]
-    
-    if opFunc == unknown:
-        print("Unknown opcode: {}".format(hex(opcode)))
-        break
+    discount = cpu.execute()
 
-    # Get the operand (if appropriate)
-    if nbytes == 2  : addr = opMode(MEM_READ(PC+1))
-    elif nbytes == 3: addr = opMode(MEM_READ(PC+1) + (MEM_READ(PC+2)<<8))
-    else            : addr = 0
-
-    # Update PC
-    PC += nbytes
-
-    # Execute opcode
-    extra_cycles  = opFunc(addr)
-    extra_cycles += add_page_crossed * page_crossed
-
-    if wsync:
-        discount = 76 - clk_cycles/3
-    else:
-        discount = ncycles + extra_cycles
+    #TODO not very clear...76-X is always lower than 76, memory[0x284] always decrements 1
+    #     This is a TIA registre but affecting CPU execution
+##    if wsync:
+    if cpu.tia_addr == TIA.WSYNC and cpu.TIA_UPDATE == True:
+    #if addr == TIA.WSYNC and mem_write == 1:
+        discount = 76 - system.clk_cycles//3
+##    else:
+##        discount = ncycles + extra_cycles
     if discount > tim_cnt:
-        memory[0x284] = (memory[0x284] - (discount//76 + 1)) & 0xff
+        # AND this is RIOT register ... what a mess!
+        #memory[0x284] = (memory[0x284] - (discount//76 + 1)) & 0xff
+        system.memory[0x284] = (system.memory[0x284] - (discount//76 + 1)) & 0xff
     tim_cnt = (tim_cnt - discount) % tim_prescaler
 
 
-    # Update num cycles
-    clk_cycles = clk_cycles + (ncycles + extra_cycles) * 3
-
-
-    # TIA: Register update
-    if TIA_UPDATE:
-        TIA_UPDATE = False
-        TIA_update()
-
     # RIOT
-    if RIOT_UPDATE:
-        RIOT_UPDATE = False
+    riot_addr  = cpu.riot_addr
+    riot_value = cpu.riot_value
+    if cpu.RIOT_UPDATE:
+        cpu.RIOT_UPDATE = False
         RIOT_update()
     
-    if wsync:
-        clk_cycles = 228
-        wsync = 0
-
-    if rsync:
-        clk_cycles = 225
-        rsync = 0
-
-    if line != 60:
-        print_debug("PC:{}, Opcode:{}, opFunc:{}, Addr:{}, nbytes:{}, ncycles:{}, clk_cyles:{}".format(hex(PC), hex(opcode), opFunc, addr, nbytes, ncycles + extra_cycles, clk_cycles))
+    # TIA: Register update
+    if cpu.TIA_UPDATE:
+        cpu.TIA_UPDATE = False
+        tia.write(cpu.tia_addr)
+        #replacement to remove TIA processing
+        #if mem_write == 1 and addr < 0x80:
+        #    if addr == TIA.VSYNC:
+        #        if tia.system.memory[TIA.VSYNC] == 0 and tia.vsync != 0:
+        #            tia.vsync = 2
+        #        tia.vsync = tia.system.memory[TIA.VSYNC] 
+        #    elif addr == TIA.WSYNC:
+        #        tia.wsync = 1
+        #        tia.system.clk_cycles = 228
+        #    elif addr == TIA.RSYNC:
+        #        tia.rsync = 1
+        #        tia.system.clk_cycles = 225
 
     # TIA: draw TV line
-    if clk_cycles >= 228:
-        #if frame_cnt < 3:
-        #    print('CLK ', clk_cycles)
-        #print clk_cycles % 228
-        #clk_cycles = 0
+    if system.clk_cycles >= 228:
 
-        # Fill P0 line
-        # TODO:missing vdelay
-        if line >= 40 and line < (232 + 20):
+        tia.line_update()
+        #replacement to remove TIA processing
+        tia.system.clk_cycles %= 228
 
-            # Playfield
-            PF_line[0:16]  = pf0ToBin[pf0_l >> 4]
-            PF_line[16:48] = pf1ToBin[pf1_l]
-            PF_line[48:80] = pf2ToBin[pf2_l]
-            if not pf_mirror:
-                PF_line[80:96]  = pf0ToBin[pf0_r >> 4]
-                PF_line[96:128] = pf1ToBin[pf1_r]
-                PF_line[128:]   = pf2ToBin[pf2_r]
-            else:
-                PF_line[80:112]  = pf2ToBinR[pf2_r]
-                PF_line[112:144] = pf1ToBinR[pf1_r]
-                PF_line[144:]    = pf0ToBinR[pf0_r >> 4]
-
-            PF0_line = PF_line[0:80]
-            PF1_line = PF_line[80:]
-
-            # Player 0
-            nusiz0 = memory[NUSIZ0] & 0x07
-            #TODO: dist and size should be used from P0_GR
-            #dist = GRP_dist[nusiz0]
-            #size = GRP_size[nusiz0]
-            grpx = memory[GRP0]
-            for i,(grp, _, _) in enumerate(P0_GR):
-                if size == 0: 
-                    grp  = grpx
-                    dist = GRP_dist[nusiz0]
-                    size = GRP_size[nusiz0]
-                else:
-                    grpx = grp
-
-                pos = P0_pos + i*dist
-                if grp != 0:
-                    data = np.repeat(dec2bin[grp], size)
-                    # TODO: we can add reverse arg as a new P0_GR item
-                    if memory[REFP0] & 0x08:
-                        data = data[::-1]
-                    P0_line[pos : pos+len(data)] = data
-        
-            # Player 1
-            nusiz1 = memory[NUSIZ1] & 0x07
-            #dist = GRP_dist[nusiz1]
-            #size = GRP_size[nusiz1]
-            grpx = memory[GRP1]
-            for i,(grp, _, size) in enumerate(P1_GR):
-                if size == 0:
-                    grp  = grpx
-                    size = GRP_size[nusiz1]
-                    dist = GRP_dist[nusiz1]
-                else:
-                    grpx = grp
-
-                pos = P1_pos + i*dist
-                if grp != 0:
-                    data = np.repeat(dec2bin[grp], size)
-                    if memory[REFP1] & 0x08:
-                        data = data[::-1]
-
-                    pos_end = pos+len(data)
-                    if pos_end <= 160:
-                        P1_line[pos : pos_end] = data
-                    else:
-                        tmp = pos_end - 160
-                        pos_ini = len(data) - tmp
-                        P1_line[pos : ] = data[ : pos_ini]
-                        P1_line[ : tmp] = data[pos_ini :]
-
-
-            # Missile 0
-            for grp, pos, size in M0_GR:
-                if grp != 0:
-                    M0_line[pos : pos+size] = True
-        
-            # Missile 1
-            for grp, pos, size in M1_GR:
-                if grp != 0:
-                    M1_line[pos : pos+size] = True
-        
-            # Ball
-            grp, pos, size = BL_GR
-            if grp != 0:
-                BL_line[pos : pos+size] = True
-
-            # Collisions
-            if (P0_line & P1_line).any():
-                print("Collision P0-P1")
-                tia_rd[0x07] |= 0x80
-            if (P0_line & M0_line).any():
-                print("Collision P0-M0")
-                tia_rd[0x00] |= 0x40
-            if (P0_line & M1_line).any():
-                print("Collision P0-M1")
-                tia_rd[0x01] |= 0x80
-            if (P0_line & BL_line).any():
-                print("Collision P0-BL")
-                tia_rd[0x02] |= 0x40
-            if (P0_line & PF_line).any():
-                print("Collision P0-PF")
-                tia_rd[0x02] |= 0x80
-
-            if (P1_line & M0_line).any():
-                print("Collision P1-M0")
-                tia_rd[0x00] |= 0x80
-            if (P1_line & M1_line).any():
-                print("Collision P1-M1")
-                tia_rd[0x01] |= 0x40
-            if (P1_line & BL_line).any():
-                print("Collision P1-BL")
-                tia_rd[0x03] |= 0x40
-            if (P1_line & PF_line).any():
-                print("Collision P1-PF")
-                tia_rd[0x03] |= 0x80
-
-            if (M0_line & M1_line).any():
-                print("Collision M0-M1")
-                tia_rd[0x07] |= 0x40
-            if (M0_line & BL_line).any():
-                print("Collision M0-BL")
-                tia_rd[0x04] |= 0x40
-            if (M0_line & PF_line).any():
-                print("Collision M0-PF")
-                tia_rd[0x04] |= 0x80
-
-            if (M1_line & BL_line).any():
-                print("Collision M1-BL")
-                tia_rd[0x05] |= 0x40
-            if (M1_line & PF_line).any():
-                print("Collision M1-PF")
-                tia_rd[0x05] |= 0x80
-
-            if (BL_line & PF_line).any():
-                print("Collision BL-PF")
-                tia_rd[0x06] |= 0x80
-
-        total_cycles += 228
-        clk_cycles %= 228
-        print_debug("Line {}  PC={} cyles={}".format(line+1, hex(PC), clk_cycles/3))
-
-        # Draw line
-        if line >= 40 and line < (232 + 20):
-            draw_line()
-
-        # Prepare internal vars for the next line
-        colubk    = [[0, memory[COLUBK]]]
-        pf0_l     = pf0_r = memory[PF0]
-        pf1_l     = pf1_r = memory[PF1]
-        pf2_l     = pf2_r = memory[PF2]
-        pf_mirror = 1 if memory[CTRLPF] & 0x01 else 0
-
-        #memory[NUSIZ0] = 0
-        nusiz0 = memory[NUSIZ0] & 0x07
-        size   = GRP_size[nusiz0]
-        dist   = GRP_dist[nusiz0]
-        copies = GRP_copies[nusiz0]
-        nusiz1 = memory[NUSIZ1] & 0x07
-        size1  = GRP_size[nusiz1]
-        dist1  = GRP_dist[nusiz1]
-        copies1= GRP_copies[nusiz1]
-        sizeM0 = 2 ** ((memory[NUSIZ0] >> 4) & 0x03)
-        sizeM1 = 2 ** ((memory[NUSIZ1] >> 4) & 0x03)
-        sizeB  = 2 ** ((memory[CTRLPF] >> 4) & 0x03)
-        P0_GR[:,2] = 0
-        P1_GR[:,2] = 0
-        M0_GR[:,2] = 0
-        M1_GR[:,2] = 0
-        BL_GR[0] = 0
-        for i in range(copies):
-            M0_GR[i,0] = ((memory[ENAM0] >> 1) & 0x01) & ((~memory[RESMP0] >> 1) & 0x01)
-            M0_GR[i,1] = M0_pos + i*dist
-            M0_GR[i,2] = sizeM0
-        for i in range(copies1):
-            M1_GR[i,0] = ((memory[ENAM1] >> 1) & 0x01) & ((~memory[RESMP1] >> 1) & 0x01)
-            M1_GR[i,1] = M1_pos + i*dist1
-            M1_GR[i,2] = sizeM1
-        BL_GR[0] = ((memory[ENABL] >> 1) & 0x01)
-        BL_GR[1] = BL_pos
-        BL_GR[2] = sizeB
-
-        #P0_line_old = P0_line.copy()
-        P0_line[:] = 0
-        P1_line[:] = 0
-        M0_line[:] = 0
-        M1_line[:] = 0
-        BL_line[:] = 0
-
-        #grp = memory[GRP0]
-
-        #if grp != 0:
-        #    data = np.repeat(dec2bin[grp], size)
-        #    if memory[REFP0] & 0x08:
-        #        data = data[::-1]
-
-        #    P0_line[P0_pos : P0_pos+(8*size)] = data
-        #    if copies>1:
-        #        pos = P0_pos + dist
-        #        P0_line[pos : pos+(8*size)] = data
-        #    if copies>2:
-        #        pos = P0_pos + 2*dist
-        #        P0_line[pos : pos+(8*size)] = data
-        #    #if memory[GRP0] != 0: print(P0_line, memory[GRP0], line-40)
-
-        #if grp == 0:
-        #    P0_line[:] = 0
-
-        line += 1
-        #print('Line {}'.format(line))
-        #if line >= 262 or line == 4:
-        #if line == 4:
-        if vsync == 2:
-            vsync = 0
-            print_debug("frame {} line:{}".format(frame_cnt, line))
-            line = 3
-
+        tia._prepare_next_line()
+        #replacement to remove TIA processing
+        #tia.line += 1
+        if tia.vsync == 2:
+            tia.vsync = 0
+            tia.frame_update()
+            tia.line = 3
 
             t2 = time.time()
-            print_debug("\nFRAME {}: line {}".format(frame_cnt, line))
             print("{} Hz, frame {}".format( 1/(t2-t1), frame_cnt))
             #code.interact(local=locals())
             frame_cnt += 1
             t1 = t2
-            #if line >= 262:
-            #    line = 0
-            ss +=1
-            ss = 0
-            if ss%2 == 0:
-                pygame.surfarray.blit_array(surface, screen)
-                display.blit(pygame.transform.scale(surface, (320*3,(192+20)*3)), (0, 0))
-                #screen_fake = np.repeat(screen, 6, axis=0)
-                #screen_fake = np.repeat(screen_fake, 3, axis=1)
-                #pygame.surfarray.blit_array(display, screen_fake)
-                pygame.display.flip()
-            if frame_cnt == 4000:
-                break
-            #time.sleep(1)
-        #if (line % 10) == 0:
-        #    code.interact(local=locals())
-
-            # Input keyboard
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit();
-                    sys.exit()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_0:
-                        memory[0x282] &= ~0x01    # reset
-                    elif event.key == pygame.K_1:
-                        memory[0x282] &= ~0x02    # select
-                    elif event.key == pygame.K_l:
-                        memory[0x280] &= ~0x80    # P0 right
-                    elif event.key == pygame.K_j:
-                        memory[0x280] &= ~0x40    # P0 left
-                    elif event.key == pygame.K_k:
-                        memory[0x280] &= ~0x20    # P0 down
-                    elif event.key == pygame.K_i:
-                        memory[0x280] &= ~0x10    # P0 up
-                    elif event.key == pygame.K_d:
-                        memory[0x280] &= ~0x08    # P1 right
-                    elif event.key == pygame.K_a:
-                        memory[0x280] &= ~0x04    # P1 left
-                    elif event.key == pygame.K_s:
-                        memory[0x280] &= ~0x02    # P1 down
-                    elif event.key == pygame.K_w:
-                        memory[0x280] &= ~0x01    # P1 up
-                    elif event.key == pygame.K_2:
-                        memory[0x282] ^= 0x80     # P0 difficulty 
-                    elif event.key == pygame.K_3:
-                        memory[0x282] ^= 0x40     # P1 difficulty
-
-                    elif event.key == pygame.K_m:
-                        tia_rd[0x0C] &= ~0x80     # P0 button
-                    elif event.key == pygame.K_x:
-                        tia_rd[0x0D] &= ~0x80     # P1 button
-
-                if event.type == pygame.KEYUP:
-                    if event.key == pygame.K_0:
-                        memory[0x282] |= 0x01
-                    elif event.key == pygame.K_1:
-                        memory[0x282] |= 0x02
-                    elif event.key == pygame.K_l:
-                        memory[0x280] |= 0x80    # P0 right
-                    elif event.key == pygame.K_j:
-                        memory[0x280] |= 0x40    # P0 left
-                    elif event.key == pygame.K_k:
-                        memory[0x280] |= 0x20    # P0 down
-                    elif event.key == pygame.K_i:
-                        memory[0x280] |= 0x10    # P0 up
-                    elif event.key == pygame.K_d:
-                        memory[0x280] |= 0x08    # P1 right
-                    elif event.key == pygame.K_a:
-                        memory[0x280] |= 0x04    # P1 left
-                    elif event.key == pygame.K_s:
-                        memory[0x280] |= 0x02    # P1 down
-                    elif event.key == pygame.K_w:
-                        memory[0x280] |= 0x01    # P1 up
-
-                    elif event.key == pygame.K_m:
-                        tia_rd[0x0C] |= 0x80     # P0 button
-                    elif event.key == pygame.K_x:
-                        tia_rd[0x0D] |= 0x80     # P1 button
-
-            #keys = pygame.key.get_pressed()
-            #if keys[K_LEFT]:
-            #    if move_ticker == 0:
-            #        move_ticker = 10
-            #        location -= 1
-            #        if location == -1:
-            #            location = 0
-            #if keys[K_RIGHT]:
-            #    if move_ticker == 0:
-            #        move_ticker = 10
-            #        location+=1
-            #        if location == 5:
-            #            location = 4
-
 
 time.sleep(2)
-#
-# TIA
-#
-# Each TV line is updated at once when the line ends (probably at STA WSYNC instruction)
-# Assume:
-# - Background does not change during the line -> all line same color
-# - Playfield can only change before each mid-line -> can be different for each midline -> store 1st midline as PFx_first
-# - Each TRIGGER register (GP, missile, ball) is written 0 or 1 time a line -> Store at which pixel were triggered each one
-#
-# So, ... (draw all objects layer by layer. Order depends on some registers)
-# - First, fill the whole line with the BG color
-# - Second, draw the two Playfields
-# - Third,  draw the ball
-# - Fourth, draw GP0 and missile 0
-# - Fourth, draw GP1 and missile 1
-# - Reset tbe number of cycles at the end of each line. Assuming NTSC:
-# First mid-line starts at cycle 68 and the second one at 148. HSYNC is at 228.
-#
-
-#    
-#
-#last_cycle = 0
-#def TIA():
-#    # Trigger registers
-#    # Can be any value (but always 8-bit, so never 0xffff)
-#    if memory[WSYNC] != 0xffff:    # Trigger WSYNC
-#        memory[WSYNC] = 0xffff
-#        cycle = 228  # CPU halted until the TV line end
-#
-#    if memory[HMOVE] != 0xffff:
-#        memory[HMOVE] = 0xffff
-#        P0_pos += memory[HMP0] # TODO: -8 to +7
-#        P1_pos += memory[HMP1]
-#        M0_pos += memory[HMM0]
-#        M1_pos += memory[HMM1]
-#        BL_pos += memory[HMBL]
-#
-#    if memory[HMCLR] != 0xffff:
-#        memory[HMCLR] = 0xffff
-#        HMP0 = HMP1 = HMM0 = HMM1 = HMBL = 0
-#
-#    if memory[CXCLR] != 0xffff:
-#        pass
-
-#
-#    if cycle >= 228:
-#        cycle = 0
-#        draw_line()
-#    else:
-#        if TRIGGER_GP0: GP0_pos = cycles
-#        if TRIGGER_GP1: GP1_pos = cycles
-#        if TRIGGER_MP0: MP0_pos = cycles
-#        if TRIGGER_MP1: MP1_pos = cycles
-#        if TRIGGER_BALL: BALL_pos = cycles
-#        if HMOV: update ALL xxx_pos values
-#
-#    last_cycle = cycle
-
-#
-
-
-show_All()
