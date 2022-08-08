@@ -1246,7 +1246,7 @@ cpu = cpu(system)
 #f = open("3_Bars_Background.bin", "rb")
 #with open("../kernel_01.bin", "rb") as f:
 #with open("../ROMS/Space Invaders (1980) (Atari, Richard Maurer - Sears) (CX2632 - 49-75153) ~.bin", "rb") as f:
-with open("../prueba.bin", "rb") as f:
+with open("prueba.bin", "rb") as f:
     rom = f.read()
 
 for i, byte in enumerate(rom):
